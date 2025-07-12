@@ -7,27 +7,25 @@
 use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
-// Temporarily comment out to see other errors
+// TODO: Re-enable when shipwright-liveview diff module is available
 // use shipwright_liveview::diff::{diff_html, DiffOptions, Patch, PatchOp};
 
-use crate::runtime::{HotReloadError, HotReloadPatch, HotReloadPatchOp};
-
-// Temporary stubs for compilation
-#[derive(Debug)]
-struct DiffOptions {
-    preserve_whitespace: bool,
-    use_keys: bool,
-    track_components: bool,
-    force_update_attrs: HashSet<String>,
+// Temporary stubs - replace with actual shipwright_liveview types
+#[derive(Debug, Clone)]
+pub struct DiffOptions {
+    pub preserve_whitespace: bool,
+    pub use_keys: bool,
+    pub track_components: bool,
+    pub force_update_attrs: HashSet<String>,
 }
 
-#[derive(Debug)]
-struct Patch {
-    ops: Vec<PatchOp>,
+#[derive(Debug, Clone)]
+pub struct Patch {
+    pub ops: Vec<PatchOp>,
 }
 
-#[derive(Debug)]
-enum PatchOp {
+#[derive(Debug, Clone)]
+pub enum PatchOp {
     Replace { path: Vec<usize>, new_html: String },
     UpdateText { path: Vec<usize>, new_text: String },
     SetAttribute { path: Vec<usize>, name: String, value: String },
@@ -37,10 +35,12 @@ enum PatchOp {
     MoveChild { parent_path: Vec<usize>, from_index: usize, to_index: usize },
 }
 
+// Temporary stub function - replace with actual shipwright_liveview function
 fn diff_html(_from: &str, _to: &str, _options: &DiffOptions) -> Result<Patch, String> {
-    // Stub implementation
     Ok(Patch { ops: vec![] })
 }
+
+use crate::runtime::{HotReloadError, HotReloadPatch, HotReloadPatchOp};
 
 /// Enhanced DOM diffing engine for hot reload
 #[derive(Debug)]
@@ -323,6 +323,51 @@ impl HotReloadDomDiffer {
                     parent_selector: self.path_to_selector(parent_path, component_id),
                     from_index: *from_index,
                     to_index: *to_index,
+                })
+            }
+            PatchOp::AddClass { path, class } => {
+                Ok(HotReloadPatchOp::SetAttribute {
+                    selector: self.path_to_selector(path, component_id),
+                    name: "class".to_string(),
+                    value: class.clone(),
+                })
+            }
+            PatchOp::RemoveClass { path, class: _ } => {
+                // For simplicity, we'll just update the class attribute
+                // In a full implementation, we'd properly manage class lists
+                Ok(HotReloadPatchOp::RemoveAttribute {
+                    selector: self.path_to_selector(path, component_id),
+                    name: "class".to_string(),
+                })
+            }
+            PatchOp::SetStyle { path, property, value } => {
+                Ok(HotReloadPatchOp::SetAttribute {
+                    selector: self.path_to_selector(path, component_id),
+                    name: "style".to_string(),
+                    value: format!("{}: {}", property, value),
+                })
+            }
+            PatchOp::RemoveStyle { path, property: _ } => {
+                // For simplicity, remove the entire style attribute
+                // In a full implementation, we'd properly manage individual styles
+                Ok(HotReloadPatchOp::RemoveAttribute {
+                    selector: self.path_to_selector(path, component_id),
+                    name: "style".to_string(),
+                })
+            }
+            PatchOp::AddEventListener { path, event, handler: _ } => {
+                // Event listeners are typically handled on the client side
+                // For now, we'll just set an attribute to indicate the event
+                Ok(HotReloadPatchOp::SetAttribute {
+                    selector: self.path_to_selector(path, component_id),
+                    name: format!("on{}", event),
+                    value: "true".to_string(),
+                })
+            }
+            PatchOp::RemoveEventListener { path, event } => {
+                Ok(HotReloadPatchOp::RemoveAttribute {
+                    selector: self.path_to_selector(path, component_id),
+                    name: format!("on{}", event),
                 })
             }
         }
