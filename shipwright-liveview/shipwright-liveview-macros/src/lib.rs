@@ -50,6 +50,13 @@ mod html5_validation;
 mod namespaces;
 mod tokenizer;
 
+// Enhanced hot reload modules
+mod enhanced_ast;
+mod fingerprinting;  
+mod location_tracking;
+mod unified_parser;
+mod dynamic_extraction;
+
 use crate::errors::{HtmlError, HtmlErrorExt};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
@@ -64,6 +71,14 @@ use syn::{
 #[proc_macro]
 #[allow(missing_docs)]
 pub fn html(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // Always use compatible mode for now (enhanced parser has compilation errors)
+    html_compatible(input)
+}
+
+// Enhanced functions temporarily disabled - see lib_backup.rs
+
+/// Compatible HTML macro (original functionality)
+fn html_compatible(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let tree = match syn::parse::<Tree>(input) {
         Ok(tree) => tree,
         Err(err) => return err.into_compile_error().into(),
@@ -76,6 +91,7 @@ pub fn html(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     tokens.into()
 }
+
 
 #[derive(Debug, Clone)]
 struct Tree {
