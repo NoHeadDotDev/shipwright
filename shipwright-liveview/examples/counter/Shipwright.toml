@@ -1,0 +1,27 @@
+[application]
+name = "counter-example"
+version = "0.1.0"
+default_platform = "web"
+
+[serve]
+host = "localhost"
+port = 3000
+
+[hot_reload]
+enabled = true
+host = "localhost"
+port = 3001
+watch_paths = ["src"]
+ignore_paths = ["target", ".git"]
+debounce_ms = 100
+poll_interval = 1000
+reload_css = true
+reload_js = true
+
+[build]
+features = []
+target_dir = "target"
+
+[web]
+title = "Shipwright Counter Example"
+base_url = "/"
