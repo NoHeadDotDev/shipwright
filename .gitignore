@@ -1,6 +1,6 @@
 # Rust
 /target/
-Cargo.lock
+*/**/Cargo.lock
 
 # Examples directory at root (but preserve shipwright-liveview/examples/)
 /examples/
