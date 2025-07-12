@@ -11,14 +11,16 @@ mod workspace;
 use commands::{build::BuildCommand, dev::DevCommand, new::NewCommand, serve::ServeCommand};
 use error::ShipwrightError;
 
-/// Shipwright CLI - Enhanced hot reload system for Rust web applications
+/// Shipwright CLI - Phoenix-style Rust web framework with hot reload
+/// 
+/// A standalone CLI for creating and managing Rust web applications with real-time
+/// LiveView updates, database integration, and modern development workflows.
 /// 
 /// Examples:
+///   shipwright new my-app             # Create new project from GitHub templates
 ///   shipwright dev                    # Start development server with hot reload
 ///   shipwright serve                  # Start production server
 ///   shipwright build                  # Build application for production
-///   shipwright dev --port 3000        # Start dev server on custom port
-///   shipwright serve --release        # Serve optimized build
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]

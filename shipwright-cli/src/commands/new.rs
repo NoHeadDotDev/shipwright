@@ -5,12 +5,24 @@ use tracing::info;
 use crate::error::ShipwrightError;
 
 /// Create a new Shipwright project from a template
+/// 
+/// This command generates a new Rust web application using Shipwright templates.
+/// Templates are fetched from GitHub by default, making this CLI fully standalone.
+/// 
+/// Available built-in templates:
+///   - default: Complete project with LiveView, database, and modern Rust stack
+///   - shipwright: Full framework template with all components
+/// 
+/// Examples:
+///   shipwright new my-app                           # Use default template
+///   shipwright new my-app --template shipwright     # Use full template
+///   shipwright new my-app --template username/repo  # Use custom GitHub template
 #[derive(Args)]
 pub struct NewCommand {
-    /// Project name
+    /// Project name (will be used as directory name and in generated files)
     name: String,
     
-    /// Template to use (can be a git URL, local path, or registered template name)
+    /// Template to use (default, shipwright, git URL, or GitHub repo)
     #[arg(long, short, default_value = "default")]
     template: String,
     
@@ -72,36 +84,48 @@ impl NewCommand {
             let git_url = format!("https://github.com/{}", self.template);
             return self.run_cargo_generate_with_git(&git_url).await;
         } else {
-            // Check for predefined templates - try local first, then remote fallback
+            // Check for predefined templates - use remote GitHub templates by default
             match self.template.as_str() {
                 "default" => {
-                    // Try local template first for development
-                    if let Ok(templates_path) = self.try_find_local_template("shipwright-default-template") {
-                        let mut cmd = Command::new("cargo");
-                        cmd.arg("generate");
-                        cmd.arg("--path").arg(&templates_path);
-                        cmd.arg("--name").arg(&self.name);
-                        return self.run_cargo_generate_command(cmd).await;
-                    } else {
-                        // For now, until we publish templates to GitHub, show a helpful message
-                        return Err(ShipwrightError::IoError(
-                            "Default template not found. Please run 'shipwright new' from within the shipwright project directory, or specify a git URL.".to_string()
-                        ));
+                    // Try remote template first (standalone usage)
+                    let git_url = "https://github.com/NoHeadDotDev/shipwright";
+                    match self.run_cargo_generate_with_git_subfolder(git_url, "templates/shipwright-default-template", "templates").await {
+                        Ok(_) => return Ok(()),
+                        Err(_) => {
+                            // Fallback to local template for development
+                            if let Ok(templates_path) = self.try_find_local_template("shipwright-default-template") {
+                                let mut cmd = Command::new("cargo");
+                                cmd.arg("generate");
+                                cmd.arg("--path").arg(&templates_path);
+                                cmd.arg("--name").arg(&self.name);
+                                return self.run_cargo_generate_command(cmd).await;
+                            } else {
+                                return Err(ShipwrightError::IoError(
+                                    "Default template not found locally or remotely. Please check your internet connection or run from the shipwright project directory.".to_string()
+                                ));
+                            }
+                        }
                     }
                 },
                 "shipwright" => {
-                    // Try local template first for development
-                    if let Ok(templates_path) = self.try_find_local_template("shipwright") {
-                        let mut cmd = Command::new("cargo");
-                        cmd.arg("generate");
-                        cmd.arg("--path").arg(&templates_path);
-                        cmd.arg("--name").arg(&self.name);
-                        return self.run_cargo_generate_command(cmd).await;
-                    } else {
-                        // For now, until we publish templates to GitHub, show a helpful message
-                        return Err(ShipwrightError::IoError(
-                            "Shipwright template not found. Please run 'shipwright new' from within the shipwright project directory, or specify a git URL.".to_string()
-                        ));
+                    // Try remote template first (standalone usage)
+                    let git_url = "https://github.com/NoHeadDotDev/shipwright";
+                    match self.run_cargo_generate_with_git_subfolder(git_url, "templates/shipwright", "templates").await {
+                        Ok(_) => return Ok(()),
+                        Err(_) => {
+                            // Fallback to local template for development
+                            if let Ok(templates_path) = self.try_find_local_template("shipwright") {
+                                let mut cmd = Command::new("cargo");
+                                cmd.arg("generate");
+                                cmd.arg("--path").arg(&templates_path);
+                                cmd.arg("--name").arg(&self.name);
+                                return self.run_cargo_generate_command(cmd).await;
+                            } else {
+                                return Err(ShipwrightError::IoError(
+                                    "Shipwright template not found locally or remotely. Please check your internet connection or run from the shipwright project directory.".to_string()
+                                ));
+                            }
+                        }
                     }
                 },
                 _ => {
@@ -194,13 +218,14 @@ impl NewCommand {
         Ok(())
     }
     
-    async fn run_cargo_generate_with_git_subfolder(&self, git_url: &str, subfolder: &str) -> Result<(), ShipwrightError> {
+    async fn run_cargo_generate_with_git_subfolder(&self, git_url: &str, subfolder: &str, branch: &str) -> Result<(), ShipwrightError> {
         info!("Creating new Shipwright project: {}", self.name);
         
-        // Build cargo-generate command for git templates with subfolder
+        // Build cargo-generate command for git templates with subfolder and branch
         let mut cmd = Command::new("cargo");
         cmd.arg("generate");
         cmd.arg("--git").arg(git_url);
+        cmd.arg("--branch").arg(branch);
         cmd.arg("--subfolder").arg(subfolder);
         cmd.arg("--name").arg(&self.name);
         

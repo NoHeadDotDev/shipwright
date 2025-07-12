@@ -1,289 +1,164 @@
 # Shipwright CLI
 
-The official command-line interface for the Shipwright enhanced hot reload system.
-
-## Features
-
-- **Development Server**: Hot reload with near-instant template updates
-- **Production Server**: Optimized static file serving
-- **Build System**: Comprehensive build pipeline with asset processing
-- **Workspace Support**: Multi-crate project detection and handling
-- **Configuration**: Flexible TOML-based configuration system
+A standalone command-line interface for creating and managing Phoenix-style Rust web applications. Shipwright provides rapid development with real-time LiveView updates, database integration, and modern development workflows.
 
 ## Installation
 
-From source:
 ```bash
-cargo install --path .
+# Install from crates.io (coming soon)
+cargo install shipwright-cli
+
+# Or build from source
+git clone https://github.com/NoHeadDotDev/shipwright
+cd shipwright/shipwright-cli
+cargo build --release
 ```
 
-## Usage
+## Features
 
-### Development Mode
+- **🚀 Project Generation**: Create new projects from GitHub templates  
+- **⚡ Hot Reload Development**: Automatic recompilation and browser refresh
+- **🔧 Production Ready**: Optimized builds and deployment configurations
+- **📊 Database Integration**: SQLx with migrations and entity management
+- **🎨 LiveView Support**: Real-time UI updates without JavaScript frameworks
+- **🏗️ Modern Stack**: Axum 0.8, SQLx, thiserror/eyre error handling
 
-Start a development server with hot reload:
+## Quick Start
 
 ```bash
-# Start on default port (8080)
+# Create a new project
+shipwright new my-app
+
+# Enter the project directory
+cd my-app
+
+# Start development server
 shipwright dev
-
-# Custom port and host
-shipwright dev --port 3000 --host 0.0.0.0
-
-# Disable hot reload
-shipwright dev --no-hot-reload
-
-# Enable specific features
-shipwright dev --features "ssr,hydration"
-
-# Open browser automatically
-shipwright dev --open
 ```
 
-### Production Mode
+Your application will be available at `http://localhost:3000` with hot reload enabled!
 
-Start a production server:
+## Commands
+
+### `shipwright new <name>`
+Create a new Shipwright project from templates hosted on GitHub.
 
 ```bash
-# Start production server
-shipwright serve
-
-# Custom configuration
-shipwright serve --port 8080 --static-dir dist
-
-# Enable compression and CORS
-shipwright serve --gzip --cors
+shipwright new my-app                           # Use default template
+shipwright new my-app --template shipwright     # Use full framework template  
+shipwright new my-app --template username/repo  # Use custom GitHub template
+shipwright new my-app --directory /path/to/dir  # Custom output directory
 ```
 
-### Building
+**Available Templates:**
+- `default`: Complete project with LiveView, database, and modern Rust stack
+- `shipwright`: Full framework template with all components
 
-Build your application for production:
+### `shipwright dev`
+Start the development server with hot reload functionality.
 
 ```bash
-# Debug build
-shipwright build
+shipwright dev              # Start on default port (3000)
+shipwright dev --port 8080  # Start on custom port
+shipwright dev --no-watch   # Disable file watching
+```
 
-# Release build with optimizations
-shipwright build --release
+### `shipwright serve`
+Start a production server for serving built applications.
 
-# Specific target (e.g., WebAssembly)
-shipwright build --target wasm32-unknown-unknown
+```bash
+shipwright serve                    # Serve on default port (8080)
+shipwright serve --port 3000       # Serve on custom port
+shipwright serve --release          # Use release build
+```
 
-# Clean before building
-shipwright build --clean --release
+### `shipwright build`
+Build the application for production.
 
-# Enable features
-shipwright build --features "ssr,csr"
+```bash
+shipwright build              # Debug build
+shipwright build --release   # Release build
+```
+
+## Project Structure
+
+Generated projects follow this structure:
+
+```
+my-app/
+├── Cargo.toml              # Workspace configuration
+├── my-app-config/          # Configuration management crate  
+├── my-app-db/              # Database models and migrations
+├── my-app-web/             # Web server with Axum and LiveView
+├── migrations/             # Database migration files
+├── static/                 # Static assets (CSS, JS, images)
+├── Shipwright.toml         # Framework configuration
+└── README.md               # Project documentation
 ```
 
 ## Configuration
 
-Shipwright uses a `Shipwright.toml` configuration file. See `Shipwright.toml.example` for a complete example.
-
-### Basic Configuration
+Projects include a `Shipwright.toml` configuration file:
 
 ```toml
-[application]
+[app]
 name = "my-app"
-version = "0.1.0"
-default_platform = "web"
+port = 3000
 
-[serve]
-host = "localhost"
-port = 8080
+[database]
+url = "sqlite:my-app.db"
+auto_migrate = true
 
 [hot_reload]
 enabled = true
+port = 3001
 watch_paths = ["src", "assets"]
-ignore_paths = ["target", "dist"]
+
+[build]
+release = false
+features = []
 ```
 
-### Workspace Configuration
+## Templates
 
-For multi-crate projects:
+The CLI fetches templates from GitHub, making it fully standalone. Templates include:
 
-```toml
-[workspace]
-members = ["app", "shared"]
-exclude = ["examples"]
-default_members = ["app"]
-```
+- **Modern Rust Web Stack**: Axum 0.8.4, SQLx, Tokio
+- **LiveView Integration**: Real-time UI updates
+- **Database Setup**: Migrations, entities, repository patterns
+- **Asset Pipeline**: CSS/JS processing and optimization
+- **Testing Framework**: Unit, integration, and browser tests
+- **Production Deployment**: Docker, CI/CD configurations
 
-## Command Reference
+## Development
 
-### Global Options
-
-- `--log-level <LEVEL>`: Set logging level (trace, debug, info, warn, error)
-- `--config <PATH>`: Path to Shipwright.toml config file
-- `--cwd <PATH>`: Working directory
-
-### Dev Command
-
-Options:
-- `--host, -H <HOST>`: Host to bind to
-- `--port, -p <PORT>`: Port to bind to
-- `--no-hot-reload`: Disable hot reload
-- `--release`: Use release mode
-- `--features <FEATURES>`: Comma-separated list of features
-- `--open`: Open browser automatically
-- `--package <PACKAGE>`: Target package (for workspaces)
-
-### Serve Command
-
-Options:
-- `--host, -H <HOST>`: Host to bind to
-- `--port, -p <PORT>`: Port to bind to
-- `--static-dir <DIR>`: Static files directory
-- `--release`: Ensure release build
-- `--cors`: Enable CORS headers
-- `--gzip`: Enable gzip compression
-- `--package <PACKAGE>`: Target package (for workspaces)
-
-### Build Command
-
-Options:
-- `--release`: Enable release mode optimizations
-- `--target <TARGET>`: Build target (e.g., wasm32-unknown-unknown)
-- `--features <FEATURES>`: Comma-separated list of features
-- `--out-dir <DIR>`: Output directory
-- `--target-dir <DIR>`: Cargo target directory
-- `--package <PACKAGE>`: Target package (for workspaces)
-- `--clean`: Clean before building
-- `--verbose, -v`: Verbose output
-
-## Hot Reload System
-
-The hot reload system watches for file changes and automatically:
-
-1. Rebuilds the Rust code when `.rs` files change
-2. Processes assets when asset files change
-3. Updates the browser without full page reload (when possible)
-4. Provides real-time build feedback
-
-### Watched Files
-
-By default, these file types trigger rebuilds:
-- `.rs` (Rust source files)
-- `.toml` (Configuration files)
-- `.html` (Template files)
-- `.css` (Stylesheets)
-- `.js` (JavaScript files)
-
-### Configuration
-
-```toml
-[hot_reload]
-enabled = true
-watch_paths = ["src", "assets", "public"]
-ignore_paths = ["target", "dist", ".git"]
-debounce_ms = 300
-poll_interval = 1000
-reload_css = true
-reload_js = true
-```
-
-## Workspace Support
-
-Shipwright automatically detects Cargo workspaces and can:
-
-- Build specific packages within a workspace
-- Watch all workspace members for changes
-- Handle dependency graphs between workspace members
-- Provide build environment variables
-
-### Workspace Detection
-
-The CLI automatically detects:
-- Single-crate projects
-- Multi-crate workspaces
-- Target package based on current directory
-- Dependency relationships between packages
-
-## Environment Variables
-
-The CLI sets these environment variables during builds:
-
-- `SHIPWRIGHT_WORKSPACE_ROOT`: Path to workspace root
-- `CARGO_TARGET_DIR`: Target directory for builds
-- Custom variables from `[build.environment]` config section
+The CLI automatically detects workspace structure and provides:
+- Hot reload with file watching
+- Database migration management  
+- Asset compilation and serving
+- Comprehensive error handling
+- Development vs production configurations
 
 ## Examples
 
-### Basic Web Application
-
 ```bash
-# Initialize new project
-cargo new my-app
-cd my-app
+# Create and run a new project
+shipwright new blog-app
+cd blog-app
+shipwright dev
 
-# Create Shipwright.toml
-cp Shipwright.toml.example Shipwright.toml
+# Production deployment
+shipwright build --release
+shipwright serve --release --port 80
 
-# Start development
-shipwright dev --open
-```
-
-### Multi-crate Workspace
-
-```bash
-# Create workspace
-mkdir my-workspace
-cd my-workspace
-
-# Create Cargo.toml for workspace
-cat > Cargo.toml << EOF
-[workspace]
-members = ["app", "shared"]
-EOF
-
-# Create packages
-cargo new app
-cargo new shared --lib
-
-# Configure Shipwright.toml for workspace
-cat > Shipwright.toml << EOF
-[application]
-name = "my-workspace"
-
-[workspace]
-members = ["app", "shared"]
-default_members = ["app"]
-EOF
-
-# Build specific package
-shipwright build --package app --release
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Port already in use**
-   ```bash
-   shipwright dev --port 3001
-   ```
-
-2. **Build failures**
-   ```bash
-   shipwright build --verbose --clean
-   ```
-
-3. **Hot reload not working**
-   - Check file permissions
-   - Verify watch paths in config
-   - Check ignore patterns
-
-### Debug Mode
-
-Enable verbose logging:
-```bash
-shipwright --log-level debug dev
+# Use custom template
+shipwright new my-api --template https://github.com/username/api-template
 ```
 
 ## Contributing
 
-See the main Shipwright repository for contribution guidelines.
+Contributions are welcome! Please see our [contributing guidelines](../CONTRIBUTING.md) for details.
 
 ## License
 
-MIT OR Apache-2.0
+Licensed under either of Apache License, Version 2.0 or MIT license at your option.
