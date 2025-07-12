@@ -1,9 +1,0 @@
-/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/clap-51c2c204be3b1852.d: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.md
-
-/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/libclap-51c2c204be3b1852.rlib: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.md
-
-/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/libclap-51c2c204be3b1852.rmeta: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.md
-
-/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/lib.rs:
-/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.rs:
-/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.5.41/src/../examples/demo.md:

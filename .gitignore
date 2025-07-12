@@ -1,5 +1,6 @@
 # Rust
 /target/
+**/target/
 **/Cargo.lock
 
 # Examples directory at root (but preserve shipwright-liveview/examples/)
@@ -18,6 +19,7 @@ Thumbs.db
 
 # Node.js (for client components)
 node_modules/
+**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

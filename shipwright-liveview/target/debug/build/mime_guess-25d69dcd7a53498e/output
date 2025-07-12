@@ -1,1 +1,0 @@
-cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/build/mime_guess-25d69dcd7a53498e/out/mime_types_generated.rs
