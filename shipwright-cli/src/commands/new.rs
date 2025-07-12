@@ -179,11 +179,23 @@ impl NewCommand {
             cmd.arg("--force");
         }
         
-        // Use silent mode to avoid terminal issues in CLI environments
+        // Use silent mode with sensible defaults for Shipwright projects
         cmd.arg("--silent");
         cmd.arg("--allow-commands");
         
-        // Add custom variables
+        // Add sensible defaults for Shipwright projects to avoid interactive prompts
+        cmd.arg("--define").arg("project_type=full-stack");
+        cmd.arg("--define").arg("framework=axum");
+        cmd.arg("--define").arg("port=3000");
+        cmd.arg("--define").arg("hot_reload=true");
+        cmd.arg("--define").arg("use_liveview=true");
+        cmd.arg("--define").arg("frontend_framework=vite");
+        cmd.arg("--define").arg("use_typescript=true");
+        cmd.arg("--define").arg("css_framework=tailwind");
+        cmd.arg("--define").arg("database=sqlite");
+        cmd.arg("--define").arg("use_migrations=true");
+        
+        // Add user-provided variables (these override defaults)
         for (key, value) in &self.variables {
             cmd.arg("--define").arg(format!("{}={}", key, value));
         }
@@ -243,11 +255,23 @@ impl NewCommand {
             cmd.arg("--force");
         }
         
-        // Use silent mode to avoid terminal issues in CLI environments
+        // Use silent mode with sensible defaults for Shipwright projects
         cmd.arg("--silent");
         cmd.arg("--allow-commands");
         
-        // Add custom variables
+        // Add sensible defaults for Shipwright projects to avoid interactive prompts
+        cmd.arg("--define").arg("project_type=full-stack");
+        cmd.arg("--define").arg("framework=axum");
+        cmd.arg("--define").arg("port=3000");
+        cmd.arg("--define").arg("hot_reload=true");
+        cmd.arg("--define").arg("use_liveview=true");
+        cmd.arg("--define").arg("frontend_framework=vite");
+        cmd.arg("--define").arg("use_typescript=true");
+        cmd.arg("--define").arg("css_framework=tailwind");
+        cmd.arg("--define").arg("database=sqlite");
+        cmd.arg("--define").arg("use_migrations=true");
+        
+        // Add user-provided variables (these override defaults)
         for (key, value) in &self.variables {
             cmd.arg("--define").arg(format!("{}={}", key, value));
         }
