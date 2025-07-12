@@ -21,6 +21,14 @@ quote = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Binary serialization
+ciborium = "0.2"  # CBOR serialization
+rmp-serde = "1.1"  # MessagePack serialization
+
+# Compression
+flate2 = "1.0"  # gzip compression
+brotli = "3.3"  # brotli compression
+
 # WebSocket
 futures-util = "0.3"
 tokio-tungstenite = "0.21"
@@ -29,6 +37,7 @@ tokio-tungstenite = "0.21"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
+thiserror = "1.0"  # Error handling
 clap = { version = "4.4", features = ["derive"] }
 dashmap = "5.5"
 walkdir = "2.4"
@@ -36,6 +45,32 @@ walkdir = "2.4"
 # Template processing
 blake3 = "1.5"
 once_cell = "1.19"
+
+# Additional logging and diagnostics
+log = "0.4"
+
+
+# Performance monitoring and caching
+lru = "0.12"  # LRU cache implementation
+parking_lot = "0.12"  # High-performance synchronization primitives
+metrics = { version = "0.21", optional = true }  # Metrics collection framework
+metrics-exporter-prometheus = { version = "0.12", optional = true }  # Prometheus exporter for metrics
+# gauge = { version = "0.3", optional = true }  # Memory usage tracking (disabled due to yanked dependency)
+perf-event = { version = "0.4", optional = true }  # Performance event monitoring
+stopwatch = "0.0.7"  # High-precision timing
+indexmap = "2.0"  # Ordered map for dependency tracking
+petgraph = "0.6"  # Graph algorithms for dependency tracking
+rayon = "1.8"  # Parallel processing for cache operations
+ahash = "0.8"  # Fast non-cryptographic hashing
+
+# LiveView integration
+shipwright-liveview = { path = "../shipwright-liveview" }
+async-trait = "0.1"
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Optional dependencies
+mimalloc = { version = "0.1", optional = true }
 
 [[bin]]
 name = "shipwright-hotreload"
@@ -45,6 +80,15 @@ path = "src/bin/hotreload.rs"
 name = "shipwright_liveview_hotreload"
 path = "src/lib.rs"
 
+[features]
+default = []
+metrics = ["dep:metrics", "dep:metrics-exporter-prometheus"]
+performance = ["dep:perf-event"]
+high-performance = ["dep:mimalloc"]
+
 [dev-dependencies]
 tempfile = "3.8"
 tokio-test = "0.4"
+[[bin]]
+name = "hotreload_simple"
+path = "src/bin/hotreload_simple.rs"
