@@ -1,0 +1,141 @@
+# Shipwright configuration for {{project-name}}
+
+[project]
+name = "{{project-name}}"
+version = "0.1.0"
+
+[server]
+port = {{port}}
+host = "127.0.0.1"
+# Path to the server binary relative to workspace root
+binary = "./target/debug/{{project-name}}-server"
+
+[build]
+# Paths to watch for changes
+watch_paths = [
+    "{{project-name}}-server/src",
+    "{{project-name}}-shared/src",
+{%- if use_liveview %}
+    "{{project-name}}-liveview/src",
+{%- endif %}
+{%- if project_type == "full-stack" or project_type == "liveview-app" %}
+    "{{project-name}}-frontend/src",
+{%- endif %}
+    "templates",
+    "static",
+]
+
+# Paths to exclude from watching
+exclude_paths = [
+    "target",
+    "node_modules",
+    "dist",
+    ".git",
+    "*.log",
+]
+
+# File extensions to watch
+watch_extensions = ["rs", "toml", "html", "css", "js", "ts", "json"]
+
+# Build command
+command = "cargo build --workspace"
+
+{%- if hot_reload %}
+[hot_reload]
+enabled = true
+# WebSocket port for hot reload communication
+ws_port = {{ port | plus: 1000 }}
+# Path to serve the hot reload client script
+client_script_path = "/hot-reload-client.js"
+# Debounce delay in milliseconds
+debounce = 100
+{%- endif %}
+
+{%- if project_type == "full-stack" or project_type == "liveview-app" %}
+[frontend]
+# Working directory for frontend commands
+working_dir = "{{project-name}}-frontend"
+
+{%- if frontend_framework == "vite" %}
+# Development server command
+dev_command = "npm run dev"
+# Build command for production
+build_command = "npm run build"
+# Output directory for built assets
+dist_dir = "dist"
+# Port for frontend dev server
+dev_port = {{ port | plus: 100 }}
+{%- elif frontend_framework == "webpack" %}
+dev_command = "npm run serve"
+build_command = "npm run build"
+dist_dir = "dist"
+dev_port = {{ port | plus: 100 }}
+{%- elif frontend_framework == "esbuild" %}
+dev_command = "npm run watch"
+build_command = "npm run build"
+dist_dir = "dist"
+{%- endif %}
+{%- endif %}
+
+[static]
+# Static file directories to serve
+dirs = [
+    { path = "static", mount = "/" },
+{%- if project_type == "full-stack" or project_type == "liveview-app" %}
+    { path = "{{project-name}}-frontend/dist", mount = "/assets" },
+{%- endif %}
+]
+
+{%- if css_framework == "tailwind" %}
+[css]
+framework = "tailwind"
+# Input CSS file
+input = "{{project-name}}-frontend/src/styles/app.css"
+# Output CSS file
+output = "static/css/app.css"
+# Tailwind config file
+config = "{{project-name}}-frontend/tailwind.config.js"
+{%- endif %}
+
+{%- if database != "none" %}
+[database]
+# Database URL (can be overridden by DATABASE_URL env var)
+{%- if database == "postgres" %}
+url = "postgres://postgres:password@localhost:5432/{{project-name}}"
+{%- elif database == "sqlite" %}
+url = "sqlite://{{project-name}}.db"
+{%- elif database == "mysql" %}
+url = "mysql://root:password@localhost:3306/{{project-name}}"
+{%- endif %}
+
+{%- if use_migrations %}
+# Migrations directory
+migrations_dir = "migrations"
+# Run migrations on startup
+auto_migrate = true
+{%- endif %}
+{%- endif %}
+
+[logging]
+# Log level (trace, debug, info, warn, error)
+level = "info"
+# Log format (pretty, json, compact)
+format = "pretty"
+# Show timestamps in logs
+timestamps = true
+
+[environment]
+# Environment-specific settings
+[environment.development]
+debug = true
+{%- if hot_reload %}
+hot_reload = true
+{%- endif %}
+
+[environment.production]
+debug = false
+{%- if hot_reload %}
+hot_reload = false
+{%- endif %}
+# Use optimized builds
+release = true

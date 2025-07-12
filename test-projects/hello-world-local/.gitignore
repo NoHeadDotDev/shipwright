@@ -1,0 +1,13 @@
+# This is the template's own gitignore
+# The generated project will have its own .gitignore created by the post-generate script
+
+# Rust
+target/
+Cargo.lock
+
+# Node
+node_modules/
+package-lock.json
+
+# Testing
+test-output/

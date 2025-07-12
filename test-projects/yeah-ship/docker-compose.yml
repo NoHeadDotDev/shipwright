@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "{{port}}:{{port}}"
+    environment:
+      - HOST=0.0.0.0
+      - PORT={{port}}
+      - ENVIRONMENT=production
+      {%- if database == "postgres" %}
+      - DATABASE_URL=postgres://{{project_name_snake_case}}:password@postgres:5432/{{project_name_snake_case}}
+      {%- elif database == "mysql" %}
+      - DATABASE_URL=mysql://{{project_name_snake_case}}:password@mysql:3306/{{project_name_snake_case}}
+      {%- elif database == "sqlite" %}
+      - DATABASE_URL=sqlite:/app/data/{{project_name_snake_case}}.db
+      {%- endif %}
+      - JWT_SECRET=your-production-jwt-secret-change-this
+      - RUST_LOG={{crate_name}}=info
+    {%- if database != "none" %}
+    depends_on:
+      {%- if database == "postgres" %}
+      - postgres
+      {%- elif database == "mysql" %}
+      - mysql
+      {%- endif %}
+    {%- endif %}
+    {%- if database == "sqlite" %}
+    volumes:
+      - app_data:/app/data
+    {%- endif %}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:{{port}}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+{%- if database == "postgres" %}
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB={{project_name_snake_case}}
+      - POSTGRES_USER={{project_name_snake_case}}
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{project_name_snake_case}}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+{%- elif database == "mysql" %}
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_DATABASE={{project_name_snake_case}}
+      - MYSQL_USER={{project_name_snake_case}}
+      - MYSQL_PASSWORD=password
+      - MYSQL_ROOT_PASSWORD=rootpassword
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+{%- endif %}
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  {%- if database == "postgres" %}
+  postgres_data:
+  {%- elif database == "mysql" %}
+  mysql_data:
+  {%- elif database == "sqlite" %}
+  app_data:
+  {%- endif %}
+  redis_data:
+
+networks:
+  default:
+    name: {{project_name_snake_case}}_network

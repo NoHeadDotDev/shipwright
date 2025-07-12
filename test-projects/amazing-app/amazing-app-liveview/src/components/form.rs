@@ -1,0 +1,10 @@
+
+//! Form components
+
+use shipwright_liveview::Html;
+use shipwright_liveview_macros::html;
+
+// Placeholder for form components
+pub fn form<T>() -> Html<T> {
+    html! { <div>"Form component placeholder"</div> }
+}

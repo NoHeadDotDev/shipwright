@@ -1,0 +1,441 @@
+//! yeah-ship Shared Library
+//!
+//! This crate contains shared types, utilities, and common functionality
+//! used across the yeah-ship application ecosystem.
+//!
+//! ## Features
+//!
+//! - **Configuration Management**: Environment-based configuration with validation
+//! - **Error Handling**: Centralized error types and handling patterns
+//! - **Data Models**: Common data structures and domain types
+//! - **Utilities**: Helper functions for common operations
+//!
+//! ## Usage
+//!
+//! Add this crate as a dependency in your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! yeah-ship-shared = { path = "../yeah-ship-shared" }
+//! ```
+//!
+//! ## Examples
+//!
+//! ### Loading Configuration
+//!
+//! ```rust
+//! use yeah_ship_shared::Config;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let config = Config::from_env()?;
+//! println!("Server running on {}:{}", config.host, config.port);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Error Handling
+//!
+//! ```rust
+//! use yeah_ship_shared::AppError;
+//!
+//! fn process_data() -> Result<String, AppError> {
+//!     // Some condition check
+//!     if false {
+//!         return Err(AppError::NotFound);
+//!     }
+//!     Ok("success".to_string())
+//! }
+//! ```
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Application-wide error types
+/// 
+/// This enum defines all possible errors that can occur throughout the yeah-ship
+/// application. It uses the `thiserror` crate for ergonomic error handling.
+///
+/// ## Error Conversion
+///
+/// All errors implement appropriate conversion traits to make error handling
+/// seamless across different layers of the application.
+///
+/// ## Examples
+///
+/// ```rust
+/// use yeah_ship_shared::AppError;
+///
+/// // Database error handling
+/// fn handle_db_error() -> Result<(), AppError> {
+///     Err(AppError::DatabaseError("Connection failed".to_string()))
+/// }
+///
+/// // Configuration error
+/// fn validate_config() -> Result<(), AppError> {
+///     Err(AppError::ConfigError("Invalid port number".to_string()))
+/// }
+/// ```
+#[derive(Debug, Error)]
+pub enum AppError {
+    /// Configuration-related errors
+    /// 
+    /// Occurs when there are issues with application configuration,
+    /// such as missing environment variables or invalid values.
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+    
+    /// Database operation errors
+    /// 
+    /// Wraps database-specific errors (SQLx, connection issues, etc.)
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    
+    /// Resource not found error
+    /// 
+    /// Used when a requested resource (user, post, etc.) cannot be found
+    #[error("Not found")]
+    NotFound,
+    
+    /// Generic internal server error
+    /// 
+    /// Used for unexpected errors that don't fit other categories
+    #[error("Internal server error")]
+    InternalError,
+}
+
+/// Application configuration
+/// 
+/// Central configuration structure that holds all application settings.
+/// Configuration is loaded from environment variables with sensible defaults.
+///
+/// ## Environment Variables
+///
+/// - `HOST`: Server bind address (default: "127.0.0.1")
+/// - `PORT`: Server port (default: 3000)
+/// - `ENVIRONMENT`: Runtime environment ("development" or "production")
+///
+/// - `DATABASE_URL`: Database connection string (required)
+///
+///
+/// ## Examples
+///
+/// ```rust
+/// use yeah_ship_shared::Config;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Load configuration from environment
+/// let config = Config::from_env()?;
+/// 
+/// // Check environment
+/// if config.is_development() {
+///     println!("Running in development mode");
+/// }
+/// 
+/// // Access configuration values
+/// println!("Server: {}:{}", config.host, config.port);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Config {
+    /// Application name
+    pub name: String,
+    /// Server port number
+    pub port: u16,
+    /// Server bind address
+    pub host: String,
+    /// Database connection URL
+    pub database_url: String,
+    /// Runtime environment
+    pub environment: Environment,
+}
+
+/// Runtime environment enumeration
+/// 
+/// Defines the different environments the application can run in.
+/// This affects logging levels, debug features, and other environment-specific behavior.
+///
+/// ## Examples
+///
+/// ```rust
+/// use yeah_ship_shared::Environment;
+/// use std::str::FromStr;
+///
+/// // Parse from string
+/// let env = Environment::from_str("development").unwrap();
+/// assert!(matches!(env, Environment::Development));
+///
+/// // Check environment type
+/// match env {
+///     Environment::Development => println!("Debug mode enabled"),
+///     Environment::Production => println!("Production optimizations active"),
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Environment {
+    /// Development environment with debug features enabled
+    Development,
+    /// Production environment with optimizations
+    Production,
+}
+
+impl Config {
+    /// Load configuration from environment variables
+    /// 
+    /// Reads configuration values from environment variables with fallback defaults.
+    /// This is the primary way to initialize application configuration.
+    ///
+    /// ## Environment Variables
+    ///
+    /// - `PORT`: Server port (default: 3000)
+    /// - `HOST`: Bind address (default: "127.0.0.1")
+    /// - `ENVIRONMENT`: Runtime environment (default: "development")
+    ///
+    /// - `DATABASE_URL`: Database connection string (required)
+    ///
+    ///
+    /// ## Errors
+    ///
+    /// Returns `AppError::ConfigError` if:
+    /// - PORT is not a valid number
+    ///
+    /// - DATABASE_URL is not set
+    ///
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::Config;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::from_env()?;
+    /// println!("Loaded config: {:?}", config);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_env() -> Result<Self, AppError> {
+        let port = std::env::var("PORT")
+            .unwrap_or_else(|_| "3000".to_string())
+            .parse()
+            .map_err(|_| AppError::ConfigError("Invalid PORT".to_string()))?;
+            
+        let host = std::env::var("HOST")
+            .unwrap_or_else(|_| "127.0.0.1".to_string());
+        let database_url = std::env::var("DATABASE_URL")
+            .map_err(|_| AppError::ConfigError("DATABASE_URL not set".to_string()))?;
+        
+        let environment = std::env::var("ENVIRONMENT")
+            .unwrap_or_else(|_| "development".to_string())
+            .parse()
+            .unwrap_or(Environment::Development);
+            
+        Ok(Config {
+            name: "yeah-ship".to_string(),
+            port,
+            host,
+            database_url,
+            environment,
+        })
+    }
+    
+    /// Check if running in development environment
+    /// 
+    /// Returns `true` if the current environment is `Environment::Development`.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::{Config, Environment};
+    ///
+    /// let mut config = Config {
+    ///     name: "test".to_string(),
+    ///     port: 3000,
+    ///     host: "localhost".to_string(),
+    ///
+    ///     database_url: "sqlite::memory:".to_string(),
+    ///
+    ///     environment: Environment::Development,
+    /// };
+    ///
+    /// assert!(config.is_development());
+    /// assert!(!config.is_production());
+    /// ```
+    pub fn is_development(&self) -> bool {
+        matches!(self.environment, Environment::Development)
+    }
+    
+    /// Check if running in production environment
+    /// 
+    /// Returns `true` if the current environment is `Environment::Production`.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::{Config, Environment};
+    ///
+    /// let config = Config {
+    ///     name: "test".to_string(),
+    ///     port: 3000,
+    ///     host: "0.0.0.0".to_string(),
+    ///
+    ///     database_url: "postgres://user:pass@db/prod".to_string(),
+    ///
+    ///     environment: Environment::Production,
+    /// };
+    ///
+    /// assert!(config.is_production());
+    /// assert!(!config.is_development());
+    /// ```
+    pub fn is_production(&self) -> bool {
+        matches!(self.environment, Environment::Production)
+    }
+}
+
+impl std::str::FromStr for Environment {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "development" | "dev" => Ok(Environment::Development),
+            "production" | "prod" => Ok(Environment::Production),
+            _ => Err(format!("Unknown environment: {}", s)),
+        }
+    }
+}
+
+/// Data models and domain types
+/// 
+/// This module contains the core data structures used throughout the application.
+/// All models implement appropriate serialization traits for API compatibility.
+pub mod models {
+    use super::*;
+    use uuid::Uuid;
+    use chrono::{DateTime, Utc};
+    
+    /// User entity representing a registered user
+    /// 
+    /// This is the core user model used throughout the application.
+    /// Contains essential user information and audit timestamps.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::models::User;
+    /// use uuid::Uuid;
+    /// use chrono::Utc;
+    ///
+    /// let user = User {
+    ///     id: Uuid::new_v4(),
+    ///     username: "johndoe".to_string(),
+    ///     email: "john@example.com".to_string(),
+    ///     created_at: Utc::now(),
+    ///     updated_at: Utc::now(),
+    /// };
+    /// ```
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct User {
+        /// Unique user identifier
+        pub id: Uuid,
+        /// Unique username for login
+        pub username: String,
+        /// User's email address
+        pub email: String,
+        /// When the user account was created
+        pub created_at: DateTime<Utc>,
+        /// When the user account was last updated
+        pub updated_at: DateTime<Utc>,
+    }
+    
+    /// Request payload for creating a new user
+    /// 
+    /// Used in API endpoints to accept user creation data.
+    /// Contains only the fields that can be set during user creation.
+    ///
+    /// ## Validation
+    /// 
+    /// Fields should be validated before processing:
+    /// - `username`: 3-50 characters, alphanumeric + underscore
+    /// - `email`: Valid email format
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::models::CreateUserRequest;
+    ///
+    /// let request = CreateUserRequest {
+    ///     username: "newuser".to_string(),
+    ///     email: "newuser@example.com".to_string(),
+    /// };
+    /// ```
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CreateUserRequest {
+        /// Desired username (must be unique)
+        pub username: String,
+        /// User's email address (must be unique)
+        pub email: String,
+    }
+}
+
+/// Utility functions and helper methods
+/// 
+/// This module provides common utility functions used across the application.
+/// Functions here should be pure and stateless where possible.
+pub mod utils {
+    use uuid::Uuid;
+    
+    /// Generate a new UUID v4
+    /// 
+    /// Creates a new random UUID for use as a unique identifier.
+    /// This is used for all entity IDs in the application.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::utils::generate_id;
+    ///
+    /// let id = generate_id();
+    /// assert!(!id.to_string().is_empty());
+    /// ```
+    pub fn generate_id() -> Uuid {
+        Uuid::new_v4()
+    }
+    
+    /// Convert text to a URL-friendly slug
+    /// 
+    /// Takes arbitrary text and converts it to a lowercase, hyphen-separated slug
+    /// suitable for use in URLs. Non-alphanumeric characters are replaced with hyphens,
+    /// and multiple consecutive hyphens are collapsed to single hyphens.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use yeah_ship_shared::utils::slugify;
+    ///
+    /// assert_eq!(slugify("Hello World!"), "hello-world");
+    /// assert_eq!(slugify("Test  Multiple   Spaces"), "test-multiple-spaces");
+    /// assert_eq!(slugify("CamelCase Title"), "camelcase-title");
+    /// assert_eq!(slugify("Special@#$Characters"), "special-characters");
+    /// ```
+    pub fn slugify(text: &str) -> String {
+        text.to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .split('-')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_slugify() {
+        assert_eq!(utils::slugify("Hello World!"), "hello-world");
+        assert_eq!(utils::slugify("Test  Multiple   Spaces"), "test-multiple-spaces");
+    }
+}
