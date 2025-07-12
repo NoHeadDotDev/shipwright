@@ -1,0 +1,42 @@
+# Target directories
+target/
+*/target/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Documentation
+*.md
+docs/
+
+# Git
+.git/
+.gitignore
+
+# Test files
+tests/
+**/tests/
+
+# Development tools
+.editorconfig
+.rustfmt.toml
+deny.toml
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/

@@ -1,0 +1,289 @@
+# Testing Infrastructure for {{crate_name}}-web
+
+This directory contains comprehensive testing infrastructure for the web crate, including unit tests, integration tests, and browser automation tests.
+
+## Test Structure
+
+```
+tests/
+├── integration_tests.rs          # Basic integration tests
+├── test_utils.rs                  # Common testing utilities
+├── integration/                   # Advanced integration tests
+│   ├── mod.rs                    # Module exports
+│   ├── api_tests.rs              # REST API endpoint tests
+│   ├── browser_tests.rs          # Fantoccini browser automation
+│   └── performance_tests.rs      # Load and performance testing
+└── README.md                     # This file
+```
+
+## Test Categories
+
+### Unit Tests
+- Located in `src/` files alongside implementation code
+- Test individual functions and modules in isolation
+- Use `cargo test` to run
+
+### Integration Tests
+- Test the complete web application with real database
+- Use `sqlx::test` for automatic database setup/teardown
+- Include API endpoint testing, validation, pagination, etc.
+
+### Browser Tests
+- End-to-end testing using Fantoccini WebDriver
+- Test complete user workflows in a real browser
+- Include accessibility and responsive design testing
+
+### Performance Tests
+- Load testing and benchmarking
+- Response time measurements
+- Concurrent request handling
+- Memory usage under load
+
+## Running Tests
+
+### Prerequisites
+
+1. **Database Setup**:
+   ```bash
+   # Install and start PostgreSQL
+   createdb {{crate_name}}_test
+   export DATABASE_URL="postgresql://localhost/{{crate_name}}_test"
+   ```
+
+2. **WebDriver for Browser Tests** (optional):
+   ```bash
+   # Install Chrome/Chromium WebDriver
+   # Or use Docker:
+   docker run -d -p 4444:4444 selenium/standalone-chrome
+   ```
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run only unit tests
+cargo test --lib
+
+# Run only integration tests
+cargo test --test integration_tests
+
+# Run browser tests (requires WebDriver)
+cargo test --test browser_tests
+
+# Run performance tests
+cargo test performance
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run tests in serial (for database tests)
+cargo test -- --test-threads=1
+```
+
+### Test Features
+
+```bash
+# Enable test utilities for development
+cargo test --features test-utils
+
+# Run with specific test configuration
+RUST_LOG=debug cargo test
+```
+
+## Test Utilities
+
+### TestApp
+Provides a complete test application instance with:
+- Isolated test database
+- Configured application state
+- Automatic cleanup
+
+```rust
+let test_app = TestApp::new().await;
+let response = test_request!(get, "/health", test_app.app);
+test_app.cleanup().await;
+```
+
+### ApiTestClient
+HTTP client wrapper for testing REST APIs:
+- Automatic JSON serialization/deserialization
+- Authentication token management
+- Response assertion helpers
+
+```rust
+let client = ApiTestClient::new(test_app.app);
+let response = client.post("/api/users", &user_data).await;
+response.assert_status(201);
+let user: User = response.assert_json_success();
+```
+
+### TestDataFactory
+Generates realistic test data using the `fake` crate:
+
+```rust
+let user = TestDataFactory::create_user();
+let users = TestDataFactory::create_users(10);
+let specific_user = TestDataFactory::create_user_with_email("test@example.com");
+```
+
+### DatabaseTestUtils
+Database testing utilities:
+- Test data seeding
+- Database cleanup
+- Transaction management
+
+```rust
+let seed_data = DatabaseTestUtils::seed_test_data(&pool).await;
+DatabaseTestUtils::clean_database(&pool).await;
+```
+
+### BrowserTestHarness
+Browser automation setup:
+- WebDriver client management
+- Page object model implementations
+- Cross-browser testing support
+
+```rust
+let mut harness = BrowserTestHarness::new().await?;
+harness.goto("/").await?;
+let mut page = MainPage::new(&mut harness.client);
+page.click_status_button().await?;
+```
+
+## Testing Best Practices
+
+### 1. Test Isolation
+- Each test should be independent
+- Use `sqlx::test` for database isolation
+- Clean up resources after tests
+
+### 2. Realistic Test Data
+- Use `TestDataFactory` for consistent test data
+- Test with various data scenarios
+- Include edge cases and boundary conditions
+
+### 3. Comprehensive Coverage
+- Test happy paths and error conditions
+- Include validation testing
+- Test authentication and authorization
+- Cover performance characteristics
+
+### 4. Browser Testing
+- Test core user workflows
+- Verify responsive design
+- Check accessibility compliance
+- Test JavaScript functionality
+
+### 5. Performance Testing
+- Set reasonable performance thresholds
+- Test concurrent request handling
+- Monitor memory usage
+- Benchmark critical endpoints
+
+## CI/CD Integration
+
+### GitHub Actions Example
+```yaml
+name: Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: {{crate_name}}_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run tests
+        run: cargo test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost/{{crate_name}}_test
+
+      - name: Run browser tests
+        run: |
+          docker run -d -p 4444:4444 selenium/standalone-chrome
+          cargo test browser_tests
+```
+
+## Debugging Tests
+
+### Logging
+```bash
+# Enable debug logging
+RUST_LOG=debug cargo test -- --nocapture
+
+# Test-specific logging
+RUST_LOG={{crate_name}}_web=trace cargo test
+```
+
+### Database Inspection
+```bash
+# Connect to test database
+psql postgresql://localhost/{{crate_name}}_test
+
+# View test data
+SELECT * FROM users;
+```
+
+### Browser Test Debugging
+- Use `--nocapture` to see browser automation logs
+- Take screenshots during test failures
+- Use browser developer tools for debugging
+
+## Extending Tests
+
+### Adding New Test Cases
+1. Create test functions following naming convention
+2. Use appropriate test utilities
+3. Include both positive and negative test cases
+4. Add documentation for complex test scenarios
+
+### Custom Test Utilities
+- Add new utilities to `test_utils.rs`
+- Follow existing patterns for consistency
+- Include documentation and examples
+
+### Performance Benchmarks
+- Add new benchmarks to `performance_tests.rs`
+- Set appropriate performance thresholds
+- Consider different load scenarios
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Database Connection Errors**
+   - Ensure PostgreSQL is running
+   - Check DATABASE_URL environment variable
+   - Verify test database exists
+
+2. **WebDriver Errors**
+   - Ensure WebDriver server is running
+   - Check browser compatibility
+   - Verify network connectivity to WebDriver
+
+3. **Test Timeouts**
+   - Increase timeout values for slow operations
+   - Check for deadlocks in concurrent tests
+   - Optimize test data setup
+
+4. **Flaky Tests**
+   - Add proper wait conditions
+   - Increase assertion timeouts
+   - Fix race conditions in test code

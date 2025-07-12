@@ -1,0 +1,52 @@
+[workspace]
+members = [
+    "crates/{{crate-name}}-config",
+    "crates/{{crate-name}}-db",
+    "crates/{{crate-name}}-web",
+]
+resolver = "2"
+
+[workspace.package]
+version = "{{version}}"
+authors = ["{{author}}"]
+license = "{{license}}"
+description = "{{description}}"
+edition = "2021"
+rust-version = "1.70"
+
+[workspace.dependencies]
+# Core dependencies
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Web dependencies
+{% if use-web -%}
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+{% endif -%}
+
+# Database dependencies
+{% if use-database -%}
+{% if database-type == "postgres" -%}
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
+{% elsif database-type == "mysql" -%}
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "mysql", "uuid", "chrono"] }
+{% elsif database-type == "sqlite" -%}
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+{% endif -%}
+{% endif -%}
+
+# Config dependencies
+{% if use-config -%}
+config = "0.13"
+{% endif -%}
+
+# Common dependencies
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }

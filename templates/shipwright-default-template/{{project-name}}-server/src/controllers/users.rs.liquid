@@ -1,0 +1,541 @@
+{%- if database != "none" %}
+//! User management endpoints
+//!
+//! This module provides CRUD (Create, Read, Update, Delete) operations for user management.
+//! It demonstrates common patterns for REST API development with the Shipwright framework.
+//!
+//! ## Features
+//! - Full CRUD operations for users
+//! - Input validation and error handling
+//! - Pagination support for listing users
+//! - Search and filtering capabilities
+//! - JSON request/response handling
+//!
+//! ## API Endpoints
+//!
+//! | Method | Endpoint | Description |
+//! |--------|----------|-------------|
+//! | GET | `/users` | List all users (with pagination) |
+//! | GET | `/users/{id}` | Get user by ID |
+//! | POST | `/users` | Create a new user |
+//! | PUT | `/users/{id}` | Update user by ID |
+//! | DELETE | `/users/{id}` | Delete user by ID |
+//!
+//! ## Usage Example
+//!
+//! ```rust
+//! use axum::{Router, routing::{get, post, put, delete}};
+//! use crate::controllers::users;
+//!
+//! let app = Router::new()
+//!     .route("/users", get(users::list_users).post(users::create_user))
+//!     .route("/users/:id", 
+//!         get(users::get_user)
+//!         .put(users::update_user)
+//!         .delete(users::delete_user)
+//!     );
+//! ```
+
+use axum::{
+    extract::{Path, Query, State},
+    response::Json,
+    http::StatusCode,
+};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+use crate::{AppState, controllers::{success_response, paginated_response}};
+use {{crate_name}}_shared::{AppError, models::{User, CreateUserRequest}};
+
+/// Query parameters for user listing
+#[derive(Debug, Deserialize)]
+pub struct UserListQuery {
+    /// Page number (1-based)
+    #[serde(default = "default_page")]
+    pub page: u32,
+    /// Number of items per page
+    #[serde(default = "default_per_page")]
+    pub per_page: u32,
+    /// Search query for username or email
+    pub search: Option<String>,
+    /// Sort field (username, email, created_at)
+    #[serde(default = "default_sort")]
+    pub sort: String,
+    /// Sort order (asc, desc)
+    #[serde(default = "default_order")]
+    pub order: String,
+}
+
+fn default_page() -> u32 { 1 }
+fn default_per_page() -> u32 { 20 }
+fn default_sort() -> String { "created_at".to_string() }
+fn default_order() -> String { "desc".to_string() }
+
+/// Request body for updating a user
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserRequest {
+    pub username: Option<String>,
+    pub email: Option<String>,
+}
+
+/// Response for user operations
+#[derive(Debug, Serialize)]
+pub struct UserResponse {
+    pub id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<User> for UserResponse {
+    fn from(user: User) -> Self {
+        Self {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        }
+    }
+}
+
+/// List users with pagination and filtering
+///
+/// Returns a paginated list of users with optional search and sorting.
+///
+/// ## Query Parameters
+/// - `page`: Page number (default: 1)
+/// - `per_page`: Items per page (default: 20, max: 100)
+/// - `search`: Search term for username or email
+/// - `sort`: Sort field (username, email, created_at)
+/// - `order`: Sort order (asc, desc)
+///
+/// ## Response
+/// ```json
+/// {
+///   "success": true,
+///   "data": [
+///     {
+///       "id": "123e4567-e89b-12d3-a456-426614174000",
+///       "username": "johndoe",
+///       "email": "john@example.com",
+///       "created_at": "2024-01-01T12:00:00Z",
+///       "updated_at": "2024-01-01T12:00:00Z"
+///     }
+///   ],
+///   "pagination": {
+///     "page": 1,
+///     "per_page": 20,
+///     "total": 1,
+///     "total_pages": 1,
+///     "has_next": false,
+///     "has_prev": false
+///   }
+/// }
+/// ```
+pub async fn list_users(
+    State(state): State<AppState>,
+    Query(query): Query<UserListQuery>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    // Validate and limit per_page
+    let per_page = std::cmp::min(query.per_page, 100);
+    let offset = (query.page.saturating_sub(1)) * per_page;
+
+    // Build SQL query based on parameters
+    let mut sql = String::from("SELECT id, username, email, created_at, updated_at FROM users");
+    let mut count_sql = String::from("SELECT COUNT(*) FROM users");
+    let mut conditions = Vec::new();
+    let mut params = Vec::new();
+
+    // Add search condition if provided
+    if let Some(search) = &query.search {
+        conditions.push("(username ILIKE $1 OR email ILIKE $1)");
+        params.push(format!("%{}%", search));
+    }
+
+    // Add WHERE clause if we have conditions
+    if !conditions.is_empty() {
+        let where_clause = format!(" WHERE {}", conditions.join(" AND "));
+        sql.push_str(&where_clause);
+        count_sql.push_str(&where_clause);
+    }
+
+    // Add sorting
+    let sort_field = match query.sort.as_str() {
+        "username" => "username",
+        "email" => "email",
+        "created_at" => "created_at",
+        _ => "created_at", // Default fallback
+    };
+    
+    let sort_order = match query.order.as_str() {
+        "asc" => "ASC",
+        "desc" => "DESC",
+        _ => "DESC", // Default fallback
+    };
+
+    sql.push_str(&format!(" ORDER BY {} {}", sort_field, sort_order));
+    sql.push_str(&format!(" LIMIT {} OFFSET {}", per_page, offset));
+
+    // Get total count
+    let total: i64 = if params.is_empty() {
+        sqlx::query_scalar(&count_sql)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?
+    } else {
+        sqlx::query_scalar(&count_sql)
+            .bind(&params[0])
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?
+    };
+
+    // Get users
+    let users: Vec<User> = if params.is_empty() {
+        sqlx::query_as(&sql)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?
+    } else {
+        sqlx::query_as(&sql)
+            .bind(&params[0])
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?
+    };
+
+    let user_responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
+
+    Ok(paginated_response(user_responses, query.page, per_page, total as u64))
+}
+
+/// Get a user by ID
+///
+/// ## Path Parameters
+/// - `id`: User UUID
+///
+/// ## Response
+/// - `200 OK`: User found
+/// - `404 Not Found`: User not found
+///
+/// ## Example
+/// ```
+/// GET /users/123e4567-e89b-12d3-a456-426614174000
+/// 
+/// Response:
+/// {
+///   "success": true,
+///   "data": {
+///     "id": "123e4567-e89b-12d3-a456-426614174000",
+///     "username": "johndoe",
+///     "email": "john@example.com",
+///     "created_at": "2024-01-01T12:00:00Z",
+///     "updated_at": "2024-01-01T12:00:00Z"
+///   }
+/// }
+/// ```
+pub async fn get_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let user: User = sqlx::query_as(
+        "SELECT id, username, email, created_at, updated_at FROM users WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        _ => AppError::DatabaseError(e.to_string()),
+    })?;
+
+    Ok(success_response(UserResponse::from(user)))
+}
+
+/// Create a new user
+///
+/// ## Request Body
+/// ```json
+/// {
+///   "username": "johndoe",
+///   "email": "john@example.com"
+/// }
+/// ```
+///
+/// ## Response
+/// - `201 Created`: User created successfully
+/// - `400 Bad Request`: Invalid input data
+/// - `409 Conflict`: Username or email already exists
+///
+/// ## Example
+/// ```
+/// POST /users
+/// Content-Type: application/json
+/// 
+/// {
+///   "username": "johndoe",
+///   "email": "john@example.com"
+/// }
+/// 
+/// Response:
+/// {
+///   "success": true,
+///   "data": {
+///     "id": "123e4567-e89b-12d3-a456-426614174000",
+///     "username": "johndoe",
+///     "email": "john@example.com",
+///     "created_at": "2024-01-01T12:00:00Z",
+///     "updated_at": "2024-01-01T12:00:00Z"
+///   }
+/// }
+/// ```
+pub async fn create_user(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateUserRequest>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    // Validate input
+    if payload.username.trim().is_empty() {
+        return Err(AppError::ConfigError("Username cannot be empty".to_string()));
+    }
+    
+    if payload.email.trim().is_empty() || !payload.email.contains('@') {
+        return Err(AppError::ConfigError("Valid email is required".to_string()));
+    }
+
+    let user_id = {{crate_name}}_shared::utils::generate_id();
+    let now = Utc::now();
+
+    let user: User = sqlx::query_as(
+        r#"
+        INSERT INTO users (id, username, email, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, username, email, created_at, updated_at
+        "#
+    )
+    .bind(user_id)
+    .bind(payload.username.trim())
+    .bind(payload.email.trim().to_lowercase())
+    .bind(now)
+    .bind(now)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+            AppError::ConfigError("Username or email already exists".to_string())
+        },
+        _ => AppError::DatabaseError(e.to_string()),
+    })?;
+
+    Ok((StatusCode::CREATED, success_response(UserResponse::from(user))))
+}
+
+/// Update an existing user
+///
+/// ## Path Parameters
+/// - `id`: User UUID
+///
+/// ## Request Body
+/// ```json
+/// {
+///   "username": "newusername",
+///   "email": "newemail@example.com"
+/// }
+/// ```
+///
+/// ## Response
+/// - `200 OK`: User updated successfully
+/// - `404 Not Found`: User not found
+/// - `400 Bad Request`: Invalid input data
+/// - `409 Conflict`: Username or email already exists
+pub async fn update_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpdateUserRequest>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    // Check if user exists
+    let _existing_user: User = sqlx::query_as(
+        "SELECT id, username, email, created_at, updated_at FROM users WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        _ => AppError::DatabaseError(e.to_string()),
+    })?;
+
+    // Build dynamic update query
+    let mut set_clauses = Vec::new();
+    let mut params: Vec<Box<dyn sqlx::Encode<'_, sqlx::Sqlite> + Send + Sync>> = Vec::new();
+    let mut param_index = 1;
+
+    if let Some(username) = &payload.username {
+        if username.trim().is_empty() {
+            return Err(AppError::ConfigError("Username cannot be empty".to_string()));
+        }
+        set_clauses.push(format!("username = ${}", param_index));
+        params.push(Box::new(username.trim().to_string()));
+        param_index += 1;
+    }
+
+    if let Some(email) = &payload.email {
+        if email.trim().is_empty() || !email.contains('@') {
+            return Err(AppError::ConfigError("Valid email is required".to_string()));
+        }
+        set_clauses.push(format!("email = ${}", param_index));
+        params.push(Box::new(email.trim().to_lowercase()));
+        param_index += 1;
+    }
+
+    if set_clauses.is_empty() {
+        return Err(AppError::ConfigError("No fields to update".to_string()));
+    }
+
+    set_clauses.push(format!("updated_at = ${}", param_index));
+    params.push(Box::new(Utc::now()));
+    param_index += 1;
+
+    let sql = format!(
+        "UPDATE users SET {} WHERE id = ${} RETURNING id, username, email, created_at, updated_at",
+        set_clauses.join(", "),
+        param_index
+    );
+
+    // This is a simplified version - in practice, you'd use a query builder
+    // or handle the dynamic parameters more safely
+    let updated_user: User = sqlx::query_as(&sql)
+        .bind(id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+                AppError::ConfigError("Username or email already exists".to_string())
+            },
+            _ => AppError::DatabaseError(e.to_string()),
+        })?;
+
+    Ok(success_response(UserResponse::from(updated_user)))
+}
+
+/// Delete a user by ID
+///
+/// ## Path Parameters
+/// - `id`: User UUID
+///
+/// ## Response
+/// - `204 No Content`: User deleted successfully
+/// - `404 Not Found`: User not found
+///
+/// ## Example
+/// ```
+/// DELETE /users/123e4567-e89b-12d3-a456-426614174000
+/// 
+/// Response: 204 No Content
+/// ```
+pub async fn delete_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let result = sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::SqlitePool;
+    use {{crate_name}}_shared::Config;
+
+    async fn setup_test_db() -> SqlitePool {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        
+        // Create users table for testing
+        sqlx::query(
+            r#"
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        pool
+    }
+
+    #[tokio::test]
+    async fn test_create_user() {
+        let pool = setup_test_db().await;
+        let config = Config {
+            name: "test".to_string(),
+            port: 3000,
+            host: "127.0.0.1".to_string(),
+            database_url: ":memory:".to_string(),
+            environment: {{crate_name}}_shared::Environment::Development,
+        };
+        
+        let state = AppState {
+            config,
+            db: pool,
+        };
+
+        let request = CreateUserRequest {
+            username: "testuser".to_string(),
+            email: "test@example.com".to_string(),
+        };
+
+        let result = create_user(
+            State(state),
+            Json(request),
+        ).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_user_invalid_email() {
+        let pool = setup_test_db().await;
+        let config = Config {
+            name: "test".to_string(),
+            port: 3000,
+            host: "127.0.0.1".to_string(),
+            database_url: ":memory:".to_string(),
+            environment: {{crate_name}}_shared::Environment::Development,
+        };
+        
+        let state = AppState {
+            config,
+            db: pool,
+        };
+
+        let request = CreateUserRequest {
+            username: "testuser".to_string(),
+            email: "invalid-email".to_string(),
+        };
+
+        let result = create_user(
+            State(state),
+            Json(request),
+        ).await;
+
+        assert!(result.is_err());
+    }
+}
+{%- endif %}

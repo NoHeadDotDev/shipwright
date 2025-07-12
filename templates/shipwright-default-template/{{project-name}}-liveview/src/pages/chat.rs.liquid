@@ -1,0 +1,427 @@
+{%- if use_liveview %}
+//! Chat page LiveView component
+//!
+//! Demonstrates real-time chat functionality with multiple users,
+//! message history, and live updates.
+
+use shipwright_liveview::{LiveView, Html, Updated, EventData, LiveViewUpgrade};
+use shipwright_liveview_macros::{html, LiveView as LiveViewDerive};
+use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+{%- if framework == "axum" %}
+use axum::response::IntoResponse;
+{%- elif framework == "actix-web" %}
+use actix_web::{HttpResponse, Result};
+{%- elif framework == "rocket" %}
+use rocket::{get, response::content::RawHtml};
+{%- endif %}
+
+/// Represents a chat message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub content: String,
+    pub timestamp: DateTime<Utc>,
+    pub message_type: MessageType,
+}
+
+/// Type of chat message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageType {
+    Text,
+    System,
+    Announcement,
+}
+
+/// Represents a user in the chat
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatUser {
+    pub id: Uuid,
+    pub username: String,
+    pub is_online: bool,
+    pub joined_at: DateTime<Utc>,
+}
+
+/// Chat page component state
+#[derive(LiveViewDerive, Clone)]
+pub struct ChatPage {
+    /// Current user
+    pub current_user: ChatUser,
+    /// All messages in the chat
+    pub messages: Vec<ChatMessage>,
+    /// Current message being typed
+    pub current_message: String,
+    /// List of online users
+    pub online_users: Vec<ChatUser>,
+    /// Whether the user is typing
+    pub is_typing: bool,
+    /// Users currently typing
+    pub typing_users: Vec<String>,
+}
+
+/// Messages that can be sent to the chat component
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ChatMessage_Action {
+    /// Send a new message
+    SendMessage,
+    /// Update the current message being typed
+    UpdateMessage(String),
+    /// User started typing
+    StartTyping,
+    /// User stopped typing
+    StopTyping,
+    /// Join the chat with a username
+    JoinChat(String),
+    /// Leave the chat
+    LeaveChat,
+    /// Clear all messages (admin action)
+    ClearMessages,
+    /// Receive a new message from another user
+    ReceiveMessage(ChatMessage),
+    /// User joined notification
+    UserJoined(ChatUser),
+    /// User left notification
+    UserLeft(Uuid),
+    /// Update typing status of other users
+    UpdateTypingUsers(Vec<String>),
+}
+
+impl Default for ChatPage {
+    fn default() -> Self {
+        let user_id = {{crate_name}}_shared::utils::generate_id();
+        let current_user = ChatUser {
+            id: user_id,
+            username: format!("User{}", &user_id.to_string()[..8]),
+            is_online: true,
+            joined_at: Utc::now(),
+        };
+
+        Self {
+            current_user: current_user.clone(),
+            messages: vec![
+                ChatMessage {
+                    id: {{crate_name}}_shared::utils::generate_id(),
+                    user_id: Uuid::nil(),
+                    username: "System".to_string(),
+                    content: "Welcome to the chat! This is a demo of real-time messaging with LiveView.".to_string(),
+                    timestamp: Utc::now(),
+                    message_type: MessageType::System,
+                }
+            ],
+            current_message: String::new(),
+            online_users: vec![current_user],
+            is_typing: false,
+            typing_users: Vec::new(),
+        }
+    }
+}
+
+impl LiveView for ChatPage {
+    type Message = ChatMessage_Action;
+
+    fn update(mut self, msg: Self::Message, _data: Option<EventData>) -> Updated<Self> {
+        match msg {
+            ChatMessage_Action::SendMessage => {
+                if !self.current_message.trim().is_empty() {
+                    let message = ChatMessage {
+                        id: {{crate_name}}_shared::utils::generate_id(),
+                        user_id: self.current_user.id,
+                        username: self.current_user.username.clone(),
+                        content: self.current_message.trim().to_string(),
+                        timestamp: Utc::now(),
+                        message_type: MessageType::Text,
+                    };
+                    
+                    self.messages.push(message);
+                    self.current_message.clear();
+                    self.is_typing = false;
+                    
+                    // Limit message history
+                    if self.messages.len() > 100 {
+                        self.messages.remove(0);
+                    }
+                }
+            }
+            ChatMessage_Action::UpdateMessage(content) => {
+                self.current_message = content;
+                let was_typing = self.is_typing;
+                self.is_typing = !self.current_message.trim().is_empty();
+                
+                // If typing status changed, we would notify other users here
+                if was_typing != self.is_typing {
+                    // In a real implementation, this would send a WebSocket message
+                }
+            }
+            ChatMessage_Action::StartTyping => {
+                self.is_typing = true;
+            }
+            ChatMessage_Action::StopTyping => {
+                self.is_typing = false;
+            }
+            ChatMessage_Action::JoinChat(username) => {
+                self.current_user.username = username.clone();
+                
+                // Add join message
+                let join_message = ChatMessage {
+                    id: {{crate_name}}_shared::utils::generate_id(),
+                    user_id: Uuid::nil(),
+                    username: "System".to_string(),
+                    content: format!("{} joined the chat", username),
+                    timestamp: Utc::now(),
+                    message_type: MessageType::System,
+                };
+                self.messages.push(join_message);
+            }
+            ChatMessage_Action::LeaveChat => {
+                let leave_message = ChatMessage {
+                    id: {{crate_name}}_shared::utils::generate_id(),
+                    user_id: Uuid::nil(),
+                    username: "System".to_string(),
+                    content: format!("{} left the chat", self.current_user.username),
+                    timestamp: Utc::now(),
+                    message_type: MessageType::System,
+                };
+                self.messages.push(leave_message);
+            }
+            ChatMessage_Action::ClearMessages => {
+                self.messages.clear();
+                let clear_message = ChatMessage {
+                    id: {{crate_name}}_shared::utils::generate_id(),
+                    user_id: Uuid::nil(),
+                    username: "System".to_string(),
+                    content: "Chat cleared".to_string(),
+                    timestamp: Utc::now(),
+                    message_type: MessageType::System,
+                };
+                self.messages.push(clear_message);
+            }
+            ChatMessage_Action::ReceiveMessage(message) => {
+                self.messages.push(message);
+                if self.messages.len() > 100 {
+                    self.messages.remove(0);
+                }
+            }
+            ChatMessage_Action::UserJoined(user) => {
+                if !self.online_users.iter().any(|u| u.id == user.id) {
+                    self.online_users.push(user);
+                }
+            }
+            ChatMessage_Action::UserLeft(user_id) => {
+                self.online_users.retain(|u| u.id != user_id);
+            }
+            ChatMessage_Action::UpdateTypingUsers(users) => {
+                self.typing_users = users;
+            }
+        }
+
+        Updated::new(self)
+    }
+
+    fn render(&self) -> Html<Self::Message> {
+        html! {
+            <div class="chat-page">
+                <div class="chat-header">
+                    <h1>"Live Chat"</h1>
+                    <div class="user-info">
+                        <span>"Logged in as: " <strong>{ &self.current_user.username }</strong></span>
+                    </div>
+                </div>
+
+                <div class="chat-container">
+                    <div class="chat-main">
+                        <div class="messages-container" id="messages">
+                            { for self.messages.iter().map(|msg| self.render_message(msg)) }
+                        </div>
+
+                        { if !self.typing_users.is_empty() {
+                            html! {
+                                <div class="typing-indicator">
+                                    <span>{ self.typing_users.join(", ") } " is typing..."</span>
+                                </div>
+                            }
+                        } else {
+                            html! { <></> }
+                        }}
+
+                        <div class="message-input">
+                            <div class="input-group">
+                                <input
+                                    type="text"
+                                    value={ &self.current_message }
+                                    placeholder="Type your message..."
+                                    class="message-field"
+                                    axm-keyup={ ChatMessage_Action::UpdateMessage(self.current_message.clone()) }
+                                    axm-focus={ ChatMessage_Action::StartTyping }
+                                    axm-blur={ ChatMessage_Action::StopTyping }
+                                />
+                                <button 
+                                    axm-click={ ChatMessage_Action::SendMessage }
+                                    class="send-button"
+                                    disabled={ self.current_message.trim().is_empty() }
+                                >
+                                    "Send"
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-sidebar">
+                        <div class="online-users">
+                            <h3>"Online Users (" { self.online_users.len() } ")"</h3>
+                            <div class="users-list">
+                                { for self.online_users.iter().map(|user| self.render_user(user)) }
+                            </div>
+                        </div>
+
+                        <div class="chat-actions">
+                            <h3>"Actions"</h3>
+                            <button 
+                                axm-click={ ChatMessage_Action::ClearMessages }
+                                class="btn btn-warning btn-small"
+                            >
+                                "Clear Chat"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <style>
+                    ".chat-page { max-width: 1200px; margin: 0 auto; }
+                     .chat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+                     .user-info { font-size: 14px; color: #666; }
+                     .chat-container { display: grid; grid-template-columns: 1fr 250px; gap: 20px; height: 600px; }
+                     .chat-main { display: flex; flex-direction: column; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+                     .messages-container { flex: 1; overflow-y: auto; padding: 15px; background: #fafafa; }
+                     .message { margin-bottom: 15px; }
+                     .message-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+                     .message-user { font-weight: bold; color: #333; }
+                     .message-time { font-size: 12px; color: #999; }
+                     .message-content { background: white; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+                     .message.system .message-content { background: #e8f4fd; border-color: #bee5eb; font-style: italic; text-align: center; }
+                     .typing-indicator { padding: 10px 15px; font-style: italic; color: #666; background: #f0f0f0; }
+                     .message-input { padding: 15px; border-top: 1px solid #ddd; background: white; }
+                     .input-group { display: flex; gap: 10px; }
+                     .message-field { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+                     .send-button { padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                     .send-button:disabled { background: #ccc; cursor: not-allowed; }
+                     .chat-sidebar { display: flex; flex-direction: column; gap: 20px; }
+                     .online-users, .chat-actions { background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+                     .online-users h3, .chat-actions h3 { margin-top: 0; color: #333; }
+                     .users-list { display: flex; flex-direction: column; gap: 8px; }
+                     .user-item { display: flex; align-items: center; gap: 8px; padding: 5px; background: white; border-radius: 4px; }
+                     .user-status { width: 8px; height: 8px; border-radius: 50%; background: #00cc00; }
+                     .user-name { font-weight: 500; }
+                     .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+                     .btn-warning { background: #ff9900; color: white; }
+                     .btn-small { padding: 6px 12px; font-size: 11px; }
+                     @media (max-width: 768px) {
+                         .chat-container { grid-template-columns: 1fr; grid-template-rows: 1fr auto; height: auto; }
+                         .chat-main { height: 400px; }
+                     }"
+                </style>
+            </div>
+        }
+    }
+}
+
+impl ChatPage {
+    fn render_message(&self, message: &ChatMessage) -> Html<ChatMessage_Action> {
+        let is_own_message = message.user_id == self.current_user.id;
+        let message_class = match message.message_type {
+            MessageType::System => "message system",
+            MessageType::Announcement => "message announcement",
+            MessageType::Text => if is_own_message { "message own" } else { "message" },
+        };
+
+        html! {
+            <div class={ message_class }>
+                { if matches!(message.message_type, MessageType::Text) {
+                    html! {
+                        <div class="message-header">
+                            <span class="message-user">{ &message.username }</span>
+                            <span class="message-time">
+                                { message.timestamp.format("%H:%M").to_string() }
+                            </span>
+                        </div>
+                    }
+                } else {
+                    html! { <></> }
+                }}
+                <div class="message-content">
+                    { &message.content }
+                </div>
+            </div>
+        }
+    }
+
+    fn render_user(&self, user: &ChatUser) -> Html<ChatMessage_Action> {
+        html! {
+            <div class="user-item">
+                <div class="user-status"></div>
+                <span class="user-name">{ &user.username }</span>
+            </div>
+        }
+    }
+}
+
+/// Route handler for the chat page
+{%- if framework == "axum" %}
+pub async fn chat_page(live: LiveViewUpgrade) -> impl IntoResponse {
+    let view = ChatPage::default();
+
+    live.response(move |embed| {
+        super::layout("Chat", embed.embed(view))
+    })
+}
+{%- elif framework == "actix-web" %}
+pub async fn chat_page() -> Result<HttpResponse> {
+    // Actix-Web LiveView integration would be implemented here
+    Ok(HttpResponse::Ok().content_type("text/html").body("Chat page"))
+}
+{%- elif framework == "rocket" %}
+#[get("/chat")]
+pub fn chat_page() -> RawHtml<String> {
+    // Rocket LiveView integration would be implemented here
+    RawHtml("Chat page".to_string())
+}
+{%- endif %}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_send_message() {
+        let mut chat = ChatPage::default();
+        chat.current_message = "Hello, world!".to_string();
+        
+        let updated = chat.update(ChatMessage_Action::SendMessage, None);
+        
+        assert!(updated.view.current_message.is_empty());
+        assert_eq!(updated.view.messages.len(), 2); // System message + new message
+        assert_eq!(updated.view.messages[1].content, "Hello, world!");
+    }
+
+    #[test]
+    fn test_update_message() {
+        let chat = ChatPage::default();
+        let updated = chat.update(ChatMessage_Action::UpdateMessage("test".to_string()), None);
+        
+        assert_eq!(updated.view.current_message, "test");
+        assert!(updated.view.is_typing);
+    }
+
+    #[test]
+    fn test_empty_message_not_sent() {
+        let mut chat = ChatPage::default();
+        chat.current_message = "   ".to_string();
+        
+        let updated = chat.update(ChatMessage_Action::SendMessage, None);
+        
+        assert_eq!(updated.view.messages.len(), 1); // Only system message
+    }
+}
+{%- endif %}

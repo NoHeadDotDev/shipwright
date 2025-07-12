@@ -1,0 +1,28 @@
+# Build artifacts
+/target/
+Cargo.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Configuration backups
+config_backup_*.toml
+
+# Test artifacts
+test_uploads/
+/tmp/
+
+# Local configuration overrides (if any)
+local.toml
+*.local.toml

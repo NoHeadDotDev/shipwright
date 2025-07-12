@@ -1,0 +1,60 @@
+# Development Configuration for {{project-name}}
+# This configuration is used when {{upper_case_name}}_ENV=development (default)
+
+[database]
+url = "sqlite:{{crate_name}}_dev.db"
+max_connections = 10
+min_connections = 1
+connect_timeout = 30
+max_lifetime = 3600
+log_queries = true
+auto_migrate = true
+
+[server]
+host = "127.0.0.1"
+port = 8080
+cors_enabled = true
+cors_origins = ["*"]
+request_timeout = 30
+max_body_size = 10485760  # 10MB
+compression = true
+static_dir = "static"
+dev_mode = true
+
+[logging]
+level = "debug"
+format = "pretty"
+file_enabled = true
+file_path = "logs/{{crate_name}}_dev.log"
+max_file_size = 104857600  # 100MB
+max_files = 10
+console_enabled = true
+structured = false
+
+[security]
+jwt_secret = "dev-secret-key-change-me-in-production"
+jwt_expiration = 86400  # 24 hours
+https_redirect = false
+secure_cookies = false
+session_timeout = 7200  # 2 hours
+rate_limiting = false
+rate_limit_rpm = 120
+
+[app]
+name = "{{project-name}}"
+version = "0.1.0"
+debug = true
+
+[app.features]
+# Feature flags for development
+experimental_features = true
+debug_toolbar = true
+hot_reload = true
+detailed_errors = true
+
+[app.custom]
+# Custom development settings
+api_base_url = "http://localhost:8080/api"
+frontend_url = "http://localhost:3000"
+upload_dir = "uploads/dev"
+temp_dir = "/tmp/{{crate_name}}_dev"

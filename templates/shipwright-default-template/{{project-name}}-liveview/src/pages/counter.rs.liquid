@@ -1,0 +1,342 @@
+{%- if use_liveview %}
+//! Counter page LiveView component
+//!
+//! A classic counter example demonstrating state management, event handling,
+//! and real-time UI updates with LiveView.
+
+use shipwright_liveview::{LiveView, Html, Updated, EventData, LiveViewUpgrade};
+use shipwright_liveview_macros::{html, LiveView as LiveViewDerive};
+use serde::{Serialize, Deserialize};
+{%- if framework == "axum" %}
+use axum::response::IntoResponse;
+{%- elif framework == "actix-web" %}
+use actix_web::{HttpResponse, Result};
+{%- elif framework == "rocket" %}
+use rocket::{get, response::content::RawHtml};
+{%- endif %}
+
+/// Counter component state
+#[derive(LiveViewDerive, Clone, Default)]
+pub struct CounterPage {
+    /// Current counter value
+    pub count: i64,
+    /// Step size for increment/decrement operations
+    pub step: i64,
+    /// History of operations for undo functionality
+    pub history: Vec<i64>,
+}
+
+/// Messages that can be sent to the counter component
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CounterMessage {
+    /// Increment the counter by the current step
+    Increment,
+    /// Decrement the counter by the current step
+    Decrement,
+    /// Reset the counter to zero
+    Reset,
+    /// Set a custom step size
+    SetStep(i64),
+    /// Set the counter to a specific value
+    SetValue(i64),
+    /// Undo the last operation
+    Undo,
+    /// Double the current value
+    Double,
+    /// Halve the current value (integer division)
+    Halve,
+}
+
+impl LiveView for CounterPage {
+    type Message = CounterMessage;
+
+    fn update(mut self, msg: Self::Message, _data: Option<EventData>) -> Updated<Self> {
+        // Save current state for undo functionality
+        let old_count = self.count;
+
+        match msg {
+            CounterMessage::Increment => {
+                self.count += self.step;
+                self.history.push(old_count);
+            }
+            CounterMessage::Decrement => {
+                self.count -= self.step;
+                self.history.push(old_count);
+            }
+            CounterMessage::Reset => {
+                self.count = 0;
+                self.history.push(old_count);
+            }
+            CounterMessage::SetStep(new_step) => {
+                self.step = new_step;
+                // Don't save history for step changes
+            }
+            CounterMessage::SetValue(new_value) => {
+                self.count = new_value;
+                self.history.push(old_count);
+            }
+            CounterMessage::Undo => {
+                if let Some(previous_value) = self.history.pop() {
+                    self.count = previous_value;
+                }
+            }
+            CounterMessage::Double => {
+                self.count *= 2;
+                self.history.push(old_count);
+            }
+            CounterMessage::Halve => {
+                self.count /= 2;
+                self.history.push(old_count);
+            }
+        }
+
+        // Limit history size to prevent memory issues
+        if self.history.len() > 100 {
+            self.history.truncate(100);
+        }
+
+        Updated::new(self)
+    }
+
+    fn render(&self) -> Html<Self::Message> {
+        html! {
+            <div class="counter-page">
+                <div class="counter-header">
+                    <h1>"LiveView Counter"</h1>
+                    <p>"Demonstrates real-time state management and event handling"</p>
+                </div>
+
+                <div class="counter-display">
+                    <div class="current-value">
+                        <span class="value">{ self.count }</span>
+                        <span class="step-info">"(step: " { self.step } ")"</span>
+                    </div>
+                </div>
+
+                <div class="counter-controls">
+                    <div class="basic-controls">
+                        <button 
+                            axm-click={ CounterMessage::Decrement }
+                            class="btn btn-large btn-secondary"
+                            title={ format!("Decrease by {}", self.step) }
+                        >
+                            "- " { self.step }
+                        </button>
+                        
+                        <button 
+                            axm-click={ CounterMessage::Increment }
+                            class="btn btn-large btn-primary"
+                            title={ format!("Increase by {}", self.step) }
+                        >
+                            "+ " { self.step }
+                        </button>
+                    </div>
+
+                    <div class="advanced-controls">
+                        <button 
+                            axm-click={ CounterMessage::Double }
+                            class="btn btn-warning"
+                            disabled={ self.count == 0 }
+                        >
+                            "× 2"
+                        </button>
+                        
+                        <button 
+                            axm-click={ CounterMessage::Halve }
+                            class="btn btn-warning"
+                            disabled={ self.count == 0 }
+                        >
+                            "÷ 2"
+                        </button>
+                        
+                        <button 
+                            axm-click={ CounterMessage::Reset }
+                            class="btn btn-danger"
+                        >
+                            "Reset"
+                        </button>
+                        
+                        <button 
+                            axm-click={ CounterMessage::Undo }
+                            class="btn btn-info"
+                            disabled={ self.history.is_empty() }
+                        >
+                            "Undo"
+                        </button>
+                    </div>
+                </div>
+
+                <div class="step-controls">
+                    <h3>"Step Size"</h3>
+                    <div class="step-buttons">
+                        <button 
+                            axm-click={ CounterMessage::SetStep(1) }
+                            class={ if self.step == 1 { "btn btn-small btn-primary" } else { "btn btn-small" } }
+                        >
+                            "1"
+                        </button>
+                        <button 
+                            axm-click={ CounterMessage::SetStep(5) }
+                            class={ if self.step == 5 { "btn btn-small btn-primary" } else { "btn btn-small" } }
+                        >
+                            "5"
+                        </button>
+                        <button 
+                            axm-click={ CounterMessage::SetStep(10) }
+                            class={ if self.step == 10 { "btn btn-small btn-primary" } else { "btn btn-small" } }
+                        >
+                            "10"
+                        </button>
+                        <button 
+                            axm-click={ CounterMessage::SetStep(100) }
+                            class={ if self.step == 100 { "btn btn-small btn-primary" } else { "btn btn-small" } }
+                        >
+                            "100"
+                        </button>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <h3>"Quick Actions"</h3>
+                    <div class="quick-buttons">
+                        <button axm-click={ CounterMessage::SetValue(0) } class="btn btn-small">"0"</button>
+                        <button axm-click={ CounterMessage::SetValue(10) } class="btn btn-small">"10"</button>
+                        <button axm-click={ CounterMessage::SetValue(100) } class="btn btn-small">"100"</button>
+                        <button axm-click={ CounterMessage::SetValue(1000) } class="btn btn-small">"1000"</button>
+                        <button axm-click={ CounterMessage::SetValue(-10) } class="btn btn-small">"-10"</button>
+                    </div>
+                </div>
+
+                <div class="counter-info">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="label">"Current Value:"</span>
+                            <span class="value">{ self.count }</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">"Step Size:"</span>
+                            <span class="value">{ self.step }</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">"History Length:"</span>
+                            <span class="value">{ self.history.len() }</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">"Can Undo:"</span>
+                            <span class="value">{ if self.history.is_empty() { "No" } else { "Yes" } }</span>
+                        </div>
+                    </div>
+                </div>
+
+                <style>
+                    ".counter-page { max-width: 600px; margin: 0 auto; text-align: center; }
+                     .counter-header { margin-bottom: 30px; }
+                     .counter-display { margin: 40px 0; }
+                     .current-value { font-size: 4em; font-weight: bold; color: #333; }
+                     .current-value .value { display: block; }
+                     .step-info { font-size: 0.3em; color: #666; display: block; margin-top: 10px; }
+                     .counter-controls { margin: 30px 0; }
+                     .basic-controls { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; }
+                     .advanced-controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+                     .step-controls, .quick-actions { margin: 30px 0; }
+                     .step-buttons, .quick-buttons { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+                     .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+                     .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+                     .btn-large { padding: 15px 30px; font-size: 18px; font-weight: bold; }
+                     .btn-small { padding: 5px 15px; font-size: 12px; }
+                     .btn-primary { background: #0066cc; color: white; }
+                     .btn-secondary { background: #666; color: white; }
+                     .btn-warning { background: #ff9900; color: white; }
+                     .btn-danger { background: #cc0000; color: white; }
+                     .btn-info { background: #00aa99; color: white; }
+                     .counter-info { margin-top: 40px; background: #f9f9f9; padding: 20px; border-radius: 8px; }
+                     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+                     .info-item { display: flex; justify-content: space-between; padding: 5px 0; }
+                     .info-item .label { font-weight: bold; }
+                     .info-item .value { color: #666; }"
+                </style>
+            </div>
+        }
+    }
+}
+
+impl Default for CounterPage {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            step: 1,
+            history: Vec::new(),
+        }
+    }
+}
+
+/// Route handler for the counter page
+{%- if framework == "axum" %}
+pub async fn counter_page(live: LiveViewUpgrade) -> impl IntoResponse {
+    let view = CounterPage::default();
+
+    live.response(move |embed| {
+        super::layout("Counter", embed.embed(view))
+    })
+}
+{%- elif framework == "actix-web" %}
+pub async fn counter_page() -> Result<HttpResponse> {
+    // Actix-Web LiveView integration would be implemented here
+    Ok(HttpResponse::Ok().content_type("text/html").body("Counter page"))
+}
+{%- elif framework == "rocket" %}
+#[get("/counter")]
+pub fn counter_page() -> RawHtml<String> {
+    // Rocket LiveView integration would be implemented here
+    RawHtml("Counter page".to_string())
+}
+{%- endif %}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_counter_increment() {
+        let counter = CounterPage::default();
+        let updated = counter.update(CounterMessage::Increment, None);
+        assert_eq!(updated.view.count, 1);
+        assert_eq!(updated.view.history.len(), 1);
+    }
+
+    #[test]
+    fn test_counter_with_step() {
+        let mut counter = CounterPage::default();
+        counter.step = 5;
+        let updated = counter.update(CounterMessage::Increment, None);
+        assert_eq!(updated.view.count, 5);
+    }
+
+    #[test]
+    fn test_counter_undo() {
+        let counter = CounterPage::default();
+        let updated = counter.update(CounterMessage::Increment, None);
+        let undone = updated.view.update(CounterMessage::Undo, None);
+        assert_eq!(undone.view.count, 0);
+        assert!(undone.view.history.is_empty());
+    }
+
+    #[test]
+    fn test_counter_double() {
+        let mut counter = CounterPage::default();
+        counter.count = 5;
+        let updated = counter.update(CounterMessage::Double, None);
+        assert_eq!(updated.view.count, 10);
+    }
+
+    #[test]
+    fn test_counter_reset() {
+        let mut counter = CounterPage::default();
+        counter.count = 42;
+        let updated = counter.update(CounterMessage::Reset, None);
+        assert_eq!(updated.view.count, 0);
+        assert_eq!(updated.view.history[0], 42);
+    }
+}
+{%- endif %}

@@ -1,0 +1,367 @@
+use axum_test::TestServer;
+use fake::{Fake, Faker};
+use serde_json::{json, Value};
+use sqlx::PgPool;
+use std::collections::HashMap;
+use {{crate_name}}_db::entities::*;
+use {{crate_name}}_shared::models::*;
+use {{crate_name}}_web::{test_utils::TestApp, ApiResponse};
+
+/// Test data factory for creating realistic test data
+pub struct TestDataFactory;
+
+impl TestDataFactory {
+    /// Create a test user with realistic fake data
+    pub fn create_user() -> CreateUserRequest {
+        use fake::faker::internet::en::*;
+        use fake::faker::name::en::*;
+        
+        CreateUserRequest {
+            username: Username().fake(),
+            email: SafeEmail().fake(),
+            first_name: FirstName().fake(),
+            last_name: LastName().fake(),
+            password: "test_password123".to_string(),
+        }
+    }
+    
+    /// Create multiple test users
+    pub fn create_users(count: usize) -> Vec<CreateUserRequest> {
+        (0..count).map(|_| Self::create_user()).collect()
+    }
+    
+    /// Create test data with specific properties
+    pub fn create_user_with_email(email: &str) -> CreateUserRequest {
+        let mut user = Self::create_user();
+        user.email = email.to_string();
+        user
+    }
+}
+
+/// HTTP client wrapper for testing API endpoints
+pub struct ApiTestClient {
+    server: TestServer,
+    auth_token: Option<String>,
+}
+
+impl ApiTestClient {
+    pub fn new(app: axum::Router) -> Self {
+        let server = TestServer::new(app).unwrap();
+        Self {
+            server,
+            auth_token: None,
+        }
+    }
+    
+    pub fn set_auth_token(&mut self, token: String) {
+        self.auth_token = Some(token);
+    }
+    
+    pub async fn get(&self, path: &str) -> ApiTestResponse {
+        let mut request = self.server.get(path);
+        
+        if let Some(token) = &self.auth_token {
+            request = request.add_header("Authorization".parse().unwrap(), format!("Bearer {}", token).parse().unwrap());
+        }
+        
+        let response = request.await;
+        ApiTestResponse::new(response)
+    }
+    
+    pub async fn post<T: serde::Serialize>(&self, path: &str, body: &T) -> ApiTestResponse {
+        let mut request = self.server.post(path);
+        
+        if let Some(token) = &self.auth_token {
+            request = request.add_header("Authorization".parse().unwrap(), format!("Bearer {}", token).parse().unwrap());
+        }
+        
+        let response = request.json(body).await;
+        ApiTestResponse::new(response)
+    }
+    
+    pub async fn put<T: serde::Serialize>(&self, path: &str, body: &T) -> ApiTestResponse {
+        let mut request = self.server.put(path);
+        
+        if let Some(token) = &self.auth_token {
+            request = request.add_header("Authorization".parse().unwrap(), format!("Bearer {}", token).parse().unwrap());
+        }
+        
+        let response = request.json(body).await;
+        ApiTestResponse::new(response)
+    }
+    
+    pub async fn delete(&self, path: &str) -> ApiTestResponse {
+        let mut request = self.server.delete(path);
+        
+        if let Some(token) = &self.auth_token {
+            request = request.add_header("Authorization".parse().unwrap(), format!("Bearer {}", token).parse().unwrap());
+        }
+        
+        let response = request.await;
+        ApiTestResponse::new(response)
+    }
+}
+
+/// Wrapper around test response for easier assertions
+pub struct ApiTestResponse {
+    response: axum_test::TestResponse,
+}
+
+impl ApiTestResponse {
+    pub fn new(response: axum_test::TestResponse) -> Self {
+        Self { response }
+    }
+    
+    pub fn status(&self) -> u16 {
+        self.response.status_code()
+    }
+    
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> T {
+        self.response.json()
+    }
+    
+    pub fn text(&self) -> String {
+        self.response.text()
+    }
+    
+    pub fn headers(&self) -> &axum::http::HeaderMap {
+        self.response.headers()
+    }
+    
+    pub fn assert_success(&self) -> &Self {
+        assert!(self.status() >= 200 && self.status() < 300, "Expected successful status code, got {}", self.status());
+        self
+    }
+    
+    pub fn assert_status(&self, expected: u16) -> &Self {
+        assert_eq!(self.status(), expected, "Expected status {}, got {}", expected, self.status());
+        self
+    }
+    
+    pub fn assert_json_success<T: serde::de::DeserializeOwned>(&self) -> T {
+        self.assert_success();
+        let api_response: ApiResponse<T> = self.json();
+        assert!(api_response.success, "API response should indicate success");
+        api_response.data.expect("API response should contain data")
+    }
+    
+    pub fn assert_json_error(&self) -> String {
+        let api_response: ApiResponse<Value> = self.json();
+        assert!(!api_response.success, "API response should indicate error");
+        api_response.message.expect("API response should contain error message")
+    }
+}
+
+/// Database testing utilities
+pub struct DatabaseTestUtils;
+
+impl DatabaseTestUtils {
+    /// Clean all test data from the database
+    pub async fn clean_database(pool: &PgPool) {
+        // Clean in reverse dependency order
+        sqlx::query("TRUNCATE TABLE users CASCADE")
+            .execute(pool)
+            .await
+            .expect("Failed to clean test database");
+    }
+    
+    /// Seed database with test data
+    pub async fn seed_test_data(pool: &PgPool) -> TestSeedData {
+        let users = TestDataFactory::create_users(5);
+        let mut created_users = Vec::new();
+        
+        for user_req in users {
+            let user = sqlx::query_as!(
+                User,
+                r#"
+                INSERT INTO users (username, email, first_name, last_name, password_hash)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, username, email, first_name, last_name, password_hash, created_at, updated_at
+                "#,
+                user_req.username,
+                user_req.email,
+                user_req.first_name,
+                user_req.last_name,
+                "hashed_password" // In real tests, use proper password hashing
+            )
+            .fetch_one(pool)
+            .await
+            .expect("Failed to create test user");
+            
+            created_users.push(user);
+        }
+        
+        TestSeedData {
+            users: created_users,
+        }
+    }
+}
+
+/// Test data that was seeded into the database
+#[derive(Debug)]
+pub struct TestSeedData {
+    pub users: Vec<User>,
+}
+
+/// Assertion helpers for common test patterns
+pub trait TestAssertions {
+    fn assert_contains(&self, substring: &str);
+    fn assert_not_contains(&self, substring: &str);
+}
+
+impl TestAssertions for String {
+    fn assert_contains(&self, substring: &str) {
+        assert!(
+            self.contains(substring),
+            "Expected string to contain '{}', but it didn't. Full string: '{}'",
+            substring,
+            self
+        );
+    }
+    
+    fn assert_not_contains(&self, substring: &str) {
+        assert!(
+            !self.contains(substring),
+            "Expected string not to contain '{}', but it did. Full string: '{}'",
+            substring,
+            self
+        );
+    }
+}
+
+impl TestAssertions for &str {
+    fn assert_contains(&self, substring: &str) {
+        assert!(
+            self.contains(substring),
+            "Expected string to contain '{}', but it didn't. Full string: '{}'",
+            substring,
+            self
+        );
+    }
+    
+    fn assert_not_contains(&self, substring: &str) {
+        assert!(
+            !self.contains(substring),
+            "Expected string not to contain '{}', but it did. Full string: '{}'",
+            substring,
+            self
+        );
+    }
+}
+
+/// Property-based testing utilities
+pub mod property_tests {
+    use proptest::prelude::*;
+    use {{crate_name}}_shared::models::*;
+    
+    pub fn arbitrary_username() -> impl Strategy<Value = String> {
+        "[a-zA-Z][a-zA-Z0-9_]{2,19}"
+    }
+    
+    pub fn arbitrary_email() -> impl Strategy<Value = String> {
+        "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    }
+    
+    pub fn arbitrary_user_request() -> impl Strategy<Value = CreateUserRequest> {
+        (
+            arbitrary_username(),
+            arbitrary_email(),
+            "[a-zA-Z]{2,20}",
+            "[a-zA-Z]{2,20}",
+            ".{8,100}"
+        ).prop_map(|(username, email, first_name, last_name, password)| {
+            CreateUserRequest {
+                username,
+                email,
+                first_name,
+                last_name,
+                password,
+            }
+        })
+    }
+}
+
+/// Performance testing utilities
+pub struct PerformanceTestUtils;
+
+impl PerformanceTestUtils {
+    /// Measure response time for a function
+    pub async fn measure_response_time<F, Fut, T>(f: F) -> (T, std::time::Duration)
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = T>,
+    {
+        let start = std::time::Instant::now();
+        let result = f().await;
+        let duration = start.elapsed();
+        (result, duration)
+    }
+    
+    /// Run a function multiple times and collect timing statistics
+    pub async fn benchmark<F, Fut, T>(f: F, iterations: usize) -> BenchmarkResult
+    where
+        F: Fn() -> Fut + Clone,
+        Fut: std::future::Future<Output = T>,
+        T: std::fmt::Debug,
+    {
+        let mut durations = Vec::with_capacity(iterations);
+        
+        for _ in 0..iterations {
+            let start = std::time::Instant::now();
+            let _ = f().await;
+            durations.push(start.elapsed());
+        }
+        
+        BenchmarkResult::new(durations)
+    }
+}
+
+#[derive(Debug)]
+pub struct BenchmarkResult {
+    pub durations: Vec<std::time::Duration>,
+    pub min: std::time::Duration,
+    pub max: std::time::Duration,
+    pub avg: std::time::Duration,
+    pub median: std::time::Duration,
+}
+
+impl BenchmarkResult {
+    pub fn new(mut durations: Vec<std::time::Duration>) -> Self {
+        durations.sort();
+        
+        let min = durations.first().copied().unwrap_or_default();
+        let max = durations.last().copied().unwrap_or_default();
+        let sum: std::time::Duration = durations.iter().sum();
+        let avg = sum / durations.len() as u32;
+        let median = durations[durations.len() / 2];
+        
+        Self {
+            durations,
+            min,
+            max,
+            avg,
+            median,
+        }
+    }
+    
+    pub fn assert_avg_under(&self, threshold: std::time::Duration) {
+        assert!(
+            self.avg < threshold,
+            "Average response time {} exceeded threshold {}",
+            self.avg.as_millis(),
+            threshold.as_millis()
+        );
+    }
+    
+    pub fn assert_p95_under(&self, threshold: std::time::Duration) {
+        let p95_index = (self.durations.len() as f64 * 0.95) as usize;
+        let p95 = self.durations[p95_index.min(self.durations.len() - 1)];
+        
+        assert!(
+            p95 < threshold,
+            "95th percentile response time {} exceeded threshold {}",
+            p95.as_millis(),
+            threshold.as_millis()
+        );
+    }
+}

@@ -1,0 +1,71 @@
+[template]
+cargo_generate_version = ">=0.10.0"
+
+[placeholders.project-name]
+type = "string"
+prompt = "Project name?"
+regex = "^[a-zA-Z][a-zA-Z0-9_-]*$"
+
+[placeholders.crate-name]
+type = "string"
+prompt = "Crate name?"
+regex = "^[a-zA-Z][a-zA-Z0-9_-]*$"
+default = "{{project-name}}"
+
+[placeholders.author]
+type = "string"
+prompt = "Author?"
+default = "{{authors}}"
+
+[placeholders.description]
+type = "string"
+prompt = "Description?"
+default = "A Shipwright-powered web application"
+
+[placeholders.version]
+type = "string"
+prompt = "Version?"
+default = "0.1.0"
+
+[placeholders.license]
+type = "string"
+prompt = "License?"
+default = "MIT OR Apache-2.0"
+
+[placeholders.use-database]
+type = "bool"
+prompt = "Include database integration?"
+default = true
+
+[placeholders.use-web]
+type = "bool"
+prompt = "Include web server?"
+default = true
+
+[placeholders.use-config]
+type = "bool"
+prompt = "Include configuration management?"
+default = true
+
+[placeholders.database-type]
+type = "string"
+prompt = "Database type (postgres, mysql, sqlite)?"
+default = "postgres"
+choices = ["postgres", "mysql", "sqlite"]
+only_if = "{{use-database}}"
+
+[conditional."use-database".ignored]
+value = false
+directories = ["crates/{{crate-name}}-db"]
+
+[conditional."use-web".ignored]
+value = false
+directories = ["crates/{{crate-name}}-web"]
+
+[conditional."use-config".ignored]
+value = false
+directories = ["crates/{{crate-name}}-config"]
+
+[hooks]
+pre = ["pre-script.rhai"]
+post = ["post-script.rhai"]

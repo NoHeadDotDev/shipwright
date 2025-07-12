@@ -1,0 +1,50 @@
+# Example Shipwright.toml configuration file
+# Copy this to Shipwright.toml and customize for your project
+
+[application]
+name = "my-shipwright-app"
+version = "0.1.0"
+default_platform = "web"
+authors = ["Your Name <your.email@example.com>"]
+description = "A Shipwright web application"
+
+[web]
+title = "My Shipwright App"
+favicon = "public/favicon.ico"
+base_path = "/"
+index_template = "index.html"
+public_dir = "public"
+assets_dir = "assets"
+
+[build]
+target_dir = "target"
+out_dir = "dist"
+release = false
+features = ["default"]
+# target = "wasm32-unknown-unknown"  # Uncomment for WebAssembly builds
+
+# Custom environment variables for the build process
+[build.environment]
+# RUST_LOG = "debug"
+# MY_CUSTOM_VAR = "value"
+
+[serve]
+host = "localhost"
+port = 8080
+static_dir = "dist"
+cors = true
+
+[hot_reload]
+enabled = true
+watch_paths = ["src", "assets", "public"]
+ignore_paths = ["target", "dist", ".git", "node_modules"]
+poll_interval = 1000      # milliseconds
+debounce_ms = 300        # milliseconds
+reload_css = true
+reload_js = true
+
+# Configuration for multi-crate workspaces
+[workspace]
+# members = ["app", "shared", "common"]
+# exclude = ["examples", "benchmarks"]
+# default_members = ["app"]

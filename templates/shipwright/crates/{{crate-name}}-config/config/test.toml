@@ -1,0 +1,62 @@
+# Test Configuration for {{project-name}}
+# This configuration is used when {{upper_case_name}}_ENV=test
+# Optimized for running tests with minimal setup
+
+[database]
+url = "sqlite::memory:"
+max_connections = 5
+min_connections = 1
+connect_timeout = 5
+max_lifetime = 300
+log_queries = false
+auto_migrate = true
+
+[server]
+host = "127.0.0.1"
+port = 0  # Random port for tests
+cors_enabled = false
+cors_origins = []
+request_timeout = 10
+max_body_size = 1048576  # 1MB
+compression = false
+static_dir = "test_static"
+dev_mode = true
+
+[logging]
+level = "warn"
+format = "compact"
+file_enabled = false
+file_path = "logs/{{crate_name}}_test.log"
+max_file_size = 10485760  # 10MB
+max_files = 5
+console_enabled = false
+structured = false
+
+[security]
+jwt_secret = "test-secret-key-not-for-production"
+jwt_expiration = 300  # 5 minutes
+https_redirect = false
+secure_cookies = false
+session_timeout = 600  # 10 minutes
+rate_limiting = false
+rate_limit_rpm = 1000
+
+[app]
+name = "{{project-name}}"
+version = "0.1.0"
+debug = true
+
+[app.features]
+# Feature flags for testing
+experimental_features = true
+debug_toolbar = false
+hot_reload = false
+detailed_errors = true
+test_mode = true
+
+[app.custom]
+# Custom test settings
+api_base_url = "http://localhost:0/api"
+frontend_url = "http://localhost:3000"
+upload_dir = "test_uploads"
+temp_dir = "/tmp/{{crate_name}}_test"

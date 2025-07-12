@@ -1,0 +1,205 @@
+{%- if use_liveview %}
+//! Home page LiveView component
+//!
+//! Demonstrates basic LiveView functionality and serves as the landing page
+//! for the application.
+
+use shipwright_liveview::{LiveView, Html, Updated, EventData, LiveViewUpgrade};
+use shipwright_liveview_macros::{html, LiveView as LiveViewDerive};
+use serde::{Serialize, Deserialize};
+{%- if framework == "axum" %}
+use axum::response::IntoResponse;
+{%- elif framework == "actix-web" %}
+use actix_web::{HttpResponse, Result};
+{%- elif framework == "rocket" %}
+use rocket::{get, response::content::RawHtml};
+{%- endif %}
+
+/// Home page component state
+#[derive(LiveViewDerive, Clone, Default)]
+pub struct HomePage {
+    /// Current message to display
+    pub message: String,
+    /// Number of times the message has been refreshed
+    pub refresh_count: u32,
+}
+
+/// Messages that can be sent to the home page component
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum HomeMessage {
+    /// Refresh the welcome message
+    RefreshMessage,
+    /// Update the message with custom text
+    UpdateMessage(String),
+}
+
+impl LiveView for HomePage {
+    type Message = HomeMessage;
+
+    fn update(mut self, msg: Self::Message, _data: Option<EventData>) -> Updated<Self> {
+        match msg {
+            HomeMessage::RefreshMessage => {
+                self.refresh_count += 1;
+                self.message = format!(
+                    "Welcome to {{project-name}}! (Refreshed {} times)",
+                    self.refresh_count
+                );
+            }
+            HomeMessage::UpdateMessage(new_message) => {
+                self.message = new_message;
+            }
+        }
+        Updated::new(self)
+    }
+
+    fn render(&self) -> Html<Self::Message> {
+        html! {
+            <div class="home-page">
+                <div class="hero">
+                    <h1>"Welcome to {{project-name}}!"</h1>
+                    <p class="subtitle">
+                        "A modern Rust web application built with the Shipwright framework"
+                    </p>
+                </div>
+
+                <div class="features">
+                    <h2>"Features"</h2>
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <h3>"🔥 LiveView"</h3>
+                            <p>"Real-time, interactive UI with server-side rendering"</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>"⚡ Hot Reload"</h3>
+                            <p>"Instant feedback during development"</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>"🛡️ Type Safety"</h3>
+                            <p>"Rust's type system prevents runtime errors"</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>"🚀 Performance"</h3>
+                            <p>"Built for speed with async Rust"</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="interactive-demo">
+                    <h2>"Interactive Demo"</h2>
+                    <div class="demo-content">
+                        <p>{ &self.message }</p>
+                        <div class="demo-controls">
+                            <button 
+                                axm-click={ HomeMessage::RefreshMessage }
+                                class="btn btn-primary"
+                            >
+                                "Refresh Message"
+                            </button>
+                            <button 
+                                axm-click={ HomeMessage::UpdateMessage("Hello from LiveView!".to_string()) }
+                                class="btn btn-secondary"
+                            >
+                                "Set Custom Message"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="getting-started">
+                    <h2>"Getting Started"</h2>
+                    <div class="steps">
+                        <div class="step">
+                            <h3>"1. Explore Examples"</h3>
+                            <p>"Check out the " <a href="/live/counter">"Counter"</a> " and " 
+                               <a href="/live/chat">"Chat"</a> " examples to see LiveView in action."</p>
+                        </div>
+                        <div class="step">
+                            <h3>"2. View Components"</h3>
+                            <p>"Visit the " <a href="/live/components/demo">"Components Demo"</a> 
+                               " to see reusable UI components."</p>
+                        </div>
+                        <div class="step">
+                            <h3>"3. Build Your App"</h3>
+                            <p>"Start building your own LiveView components and pages!"</p>
+                        </div>
+                    </div>
+                </div>
+
+                <style>
+                    ".home-page { max-width: 1000px; margin: 0 auto; }
+                     .hero { text-align: center; margin-bottom: 40px; }
+                     .hero h1 { font-size: 2.5em; margin-bottom: 10px; color: #333; }
+                     .subtitle { font-size: 1.2em; color: #666; }
+                     .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0; }
+                     .feature-card { background: #f9f9f9; padding: 20px; border-radius: 8px; border: 1px solid #eee; }
+                     .feature-card h3 { margin-top: 0; color: #333; }
+                     .interactive-demo { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }
+                     .demo-content p { font-size: 1.1em; margin-bottom: 15px; }
+                     .demo-controls { display: flex; gap: 10px; flex-wrap: wrap; }
+                     .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+                     .btn-primary { background: #0066cc; color: white; }
+                     .btn-secondary { background: #666; color: white; }
+                     .btn:hover { opacity: 0.9; }
+                     .steps { display: grid; gap: 20px; }
+                     .step { background: white; padding: 20px; border-radius: 8px; border: 1px solid #eee; }
+                     .step h3 { margin-top: 0; color: #0066cc; }
+                     .step a { color: #0066cc; }"
+                </style>
+            </div>
+        }
+    }
+}
+
+/// Route handler for the home page
+{%- if framework == "axum" %}
+pub async fn home_page(live: LiveViewUpgrade) -> impl IntoResponse {
+    let view = HomePage {
+        message: "Welcome to {{project-name}}! Click a button to see LiveView in action.".to_string(),
+        refresh_count: 0,
+    };
+
+    live.response(move |embed| {
+        super::layout("Home", embed.embed(view))
+    })
+}
+{%- elif framework == "actix-web" %}
+pub async fn home_page() -> Result<HttpResponse> {
+    // Actix-Web LiveView integration would be implemented here
+    Ok(HttpResponse::Ok().content_type("text/html").body("Home page"))
+}
+{%- elif framework == "rocket" %}
+#[get("/")]
+pub fn home_page() -> RawHtml<String> {
+    // Rocket LiveView integration would be implemented here
+    RawHtml("Home page".to_string())
+}
+{%- endif %}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_home_page_default() {
+        let page = HomePage::default();
+        assert_eq!(page.message, "");
+        assert_eq!(page.refresh_count, 0);
+    }
+
+    #[test]
+    fn test_refresh_message() {
+        let page = HomePage::default();
+        let updated = page.update(HomeMessage::RefreshMessage, None);
+        assert_eq!(updated.view.refresh_count, 1);
+        assert!(updated.view.message.contains("Refreshed 1 times"));
+    }
+
+    #[test]
+    fn test_update_message() {
+        let page = HomePage::default();
+        let custom_message = "Hello, World!".to_string();
+        let updated = page.update(HomeMessage::UpdateMessage(custom_message.clone()), None);
+        assert_eq!(updated.view.message, custom_message);
+    }
+}
+{%- endif %}

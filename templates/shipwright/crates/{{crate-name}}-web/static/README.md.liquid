@@ -1,0 +1,24 @@
+# Static Assets Directory
+
+This directory contains the built static assets that are served by the web application.
+
+## Structure
+
+- `css/` - Compiled CSS files
+- `js/` - Compiled JavaScript files  
+- `vendor/` - Third-party libraries and assets
+
+## Build Process
+
+Assets are automatically copied from the `assets/` directory during the build process via `build.rs`.
+
+- Source files: `assets/`
+- Built files: `static/` (this directory)
+
+## Development
+
+When developing, make changes to files in the `assets/` directory, not directly in `static/`. The build process will handle copying and processing the files.
+
+## Production
+
+In production, these static files are served by the Axum web server using `tower-http::services::ServeDir` at the `/static` route.

@@ -1,0 +1,247 @@
+//! Health check endpoints
+//!
+//! This module provides health check endpoints for monitoring and load balancing.
+//! These endpoints are commonly used by:
+//! - Load balancers to determine if the service is healthy
+//! - Monitoring systems to track service availability
+//! - Container orchestrators for readiness and liveness probes
+//!
+//! ## Examples
+//!
+//! ### Basic health check
+//! ```rust
+//! {%- if framework == "axum" %}
+//! use axum::{Router, routing::get};
+//! use crate::controllers::health;
+//!
+//! let app = Router::new()
+//!     .route("/health", get(health::health_check))
+//!     .route("/health/ready", get(health::readiness_check))
+//!     .route("/health/live", get(health::liveness_check));
+//! {%- elif framework == "actix-web" %}
+//! use actix_web::{web, App};
+//! use crate::controllers::health;
+//!
+//! let app = App::new()
+//!     .route("/health", web::get().to(health::health_check))
+//!     .route("/health/ready", web::get().to(health::readiness_check));
+//! {%- elif framework == "rocket" %}
+//! use rocket::routes;
+//! use crate::controllers::health;
+//!
+//! let app = rocket::build()
+//!     .mount("/health", routes![health::health_check, health::readiness_check]);
+//! {%- endif %}
+//! ```
+
+{%- if framework == "axum" %}
+use axum::{
+    extract::State,
+    response::Json,
+    http::StatusCode,
+};
+{%- elif framework == "actix-web" %}
+use actix_web::{web, HttpResponse, Result};
+{%- elif framework == "rocket" %}
+use rocket::{get, State, serde::json::Json};
+{%- endif %}
+use serde_json::json;
+use std::collections::HashMap;
+use chrono::Utc;
+use crate::AppState;
+
+/// Basic health check endpoint
+/// 
+/// Returns a simple OK status to indicate the service is running.
+/// This is the most basic health check and should always return 200
+/// if the service process is running.
+///
+/// ## Response
+/// - `200 OK`: Service is running
+///
+/// ## Example
+/// ```
+/// GET /health
+/// 
+/// Response:
+/// {
+///   "status": "ok",
+///   "timestamp": "2024-01-01T12:00:00Z"
+/// }
+/// ```
+{%- if framework == "axum" %}
+pub async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(json!({
+        "status": "ok",
+        "timestamp": Utc::now().to_rfc3339()
+    })))
+}
+{%- elif framework == "actix-web" %}
+pub async fn health_check() -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().json(json!({
+        "status": "ok",
+        "timestamp": Utc::now().to_rfc3339()
+    })))
+}
+{%- elif framework == "rocket" %}
+#[get("/")]
+pub fn health_check() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "timestamp": Utc::now().to_rfc3339()
+    }))
+}
+{%- endif %}
+
+/// Detailed health check with system information
+///
+/// Provides comprehensive health information including:
+/// - Service status
+/// - Database connectivity (if configured)
+/// - System uptime
+/// - Memory usage
+/// - Configuration status
+///
+/// ## Response
+/// - `200 OK`: All systems healthy
+/// - `503 Service Unavailable`: One or more critical systems unhealthy
+///
+/// ## Example
+/// ```
+/// GET /health/detailed
+/// 
+/// Response:
+/// {
+///   "status": "healthy",
+///   "timestamp": "2024-01-01T12:00:00Z",
+///   "checks": {
+///     "database": "healthy",
+///     "config": "healthy"
+///   },
+///   "info": {
+///     "version": "1.0.0",
+///     "environment": "production"
+///   }
+/// }
+/// ```
+pub async fn detailed_health_check(
+    State(state): State<AppState>
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let mut checks = HashMap::new();
+    let mut overall_status = "healthy";
+
+    {%- if database != "none" %}
+    // Database health check
+    match check_database_health(&state).await {
+        Ok(_) => checks.insert("database", "healthy"),
+        Err(_) => {
+            checks.insert("database", "unhealthy");
+            overall_status = "unhealthy";
+        }
+    };
+    {%- endif %}
+
+    // Configuration check
+    checks.insert("config", "healthy");
+
+    let status_code = if overall_status == "healthy" {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    let response = json!({
+        "status": overall_status,
+        "timestamp": Utc::now().to_rfc3339(),
+        "checks": checks,
+        "info": {
+            "service": state.config.name,
+            "environment": format!("{:?}", state.config.environment),
+            "version": env!("CARGO_PKG_VERSION")
+        }
+    });
+
+    match status_code {
+        StatusCode::OK => Ok(Json(response)),
+        _ => Err(status_code)
+    }
+}
+
+/// Readiness check endpoint
+///
+/// Indicates whether the service is ready to accept traffic.
+/// This check verifies that all dependencies (databases, external APIs)
+/// are available and the service can handle requests.
+///
+/// ## Response
+/// - `200 OK`: Service is ready to accept traffic
+/// - `503 Service Unavailable`: Service is not ready
+///
+/// ## Usage
+/// Typically used by Kubernetes readiness probes or load balancer health checks.
+pub async fn readiness_check(
+    State(state): State<AppState>
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    {%- if database != "none" %}
+    // Check database connectivity
+    if let Err(_) = check_database_health(&state).await {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    {%- endif %}
+
+    // Add other readiness checks here (external APIs, etc.)
+
+    Ok(Json(json!({
+        "status": "ready",
+        "timestamp": Utc::now().to_rfc3339()
+    })))
+}
+
+/// Liveness check endpoint
+///
+/// Indicates whether the service is alive and responding.
+/// This is a minimal check that should only fail if the service
+/// needs to be restarted.
+///
+/// ## Response
+/// - `200 OK`: Service is alive
+/// - `503 Service Unavailable`: Service should be restarted
+///
+/// ## Usage
+/// Typically used by Kubernetes liveness probes.
+pub async fn liveness_check() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "alive",
+        "timestamp": Utc::now().to_rfc3339()
+    }))
+}
+
+{%- if database != "none" %}
+/// Check database connectivity
+async fn check_database_health(state: &AppState) -> Result<(), sqlx::Error> {
+    // Simple query to verify database connectivity
+    sqlx::query("SELECT 1")
+        .fetch_one(&state.db)
+        .await?;
+    Ok(())
+}
+{%- endif %}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let response = health_check().await;
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_liveness_check() {
+        let response = liveness_check().await;
+        let json_value = response.0;
+        assert_eq!(json_value["status"], "alive");
+    }
+}

@@ -1,0 +1,276 @@
+#!/bin/bash
+
+# Test runner script for {{crate_name}}-web
+# This script sets up test dependencies and runs different test suites
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Configuration
+TEST_DB_NAME="{{crate_name}}_test"
+SELENIUM_CONTAINER="{{crate_name}}_selenium_test"
+
+# Functions
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if Docker is available
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker is required but not installed"
+        exit 1
+    fi
+    
+    if ! docker info &> /dev/null; then
+        log_error "Docker daemon is not running"
+        exit 1
+    fi
+}
+
+# Setup test database
+setup_database() {
+    log_info "Setting up test database..."
+    
+    # Start postgres container if not running
+    if ! docker ps | grep -q postgres; then
+        log_info "Starting PostgreSQL container..."
+        docker-compose -f docker-compose.test.yml up -d postgres
+        
+        # Wait for postgres to be ready
+        log_info "Waiting for PostgreSQL to be ready..."
+        timeout 60 bash -c 'until docker-compose -f docker-compose.test.yml exec -T postgres pg_isready -U postgres; do sleep 1; done'
+    fi
+    
+    export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}"
+    log_info "Database URL: $DATABASE_URL"
+}
+
+# Setup Selenium for browser tests
+setup_selenium() {
+    log_info "Setting up Selenium WebDriver..."
+    
+    if ! docker ps | grep -q selenium; then
+        log_info "Starting Selenium container..."
+        docker-compose -f docker-compose.test.yml up -d selenium
+        
+        # Wait for selenium to be ready
+        log_info "Waiting for Selenium to be ready..."
+        timeout 60 bash -c 'until curl -f http://localhost:4444/status &>/dev/null; do sleep 1; done'
+    fi
+    
+    log_info "Selenium WebDriver available at http://localhost:4444"
+    log_info "VNC viewer available at http://localhost:7900 (password: secret)"
+}
+
+# Run unit tests
+run_unit_tests() {
+    log_info "Running unit tests..."
+    cargo test --lib
+}
+
+# Run integration tests
+run_integration_tests() {
+    log_info "Running integration tests..."
+    setup_database
+    cargo test --test integration_tests
+}
+
+# Run browser tests
+run_browser_tests() {
+    log_info "Running browser tests..."
+    setup_database
+    setup_selenium
+    cargo test --test browser_tests
+}
+
+# Run performance tests
+run_performance_tests() {
+    log_info "Running performance tests..."
+    setup_database
+    cargo test performance
+}
+
+# Run all tests
+run_all_tests() {
+    log_info "Running all tests..."
+    setup_database
+    setup_selenium
+    
+    log_info "1. Unit tests..."
+    cargo test --lib
+    
+    log_info "2. Integration tests..."
+    cargo test --test integration_tests
+    
+    log_info "3. Browser tests..."
+    cargo test --test browser_tests
+    
+    log_info "4. Performance tests..."
+    cargo test performance
+    
+    log_info "All tests completed successfully!"
+}
+
+# Cleanup test environment
+cleanup() {
+    log_info "Cleaning up test environment..."
+    docker-compose -f docker-compose.test.yml down -v
+    log_info "Cleanup completed"
+}
+
+# Coverage report
+run_coverage() {
+    log_info "Generating test coverage report..."
+    
+    # Install cargo-llvm-cov if not available
+    if ! command -v cargo-llvm-cov &> /dev/null; then
+        log_info "Installing cargo-llvm-cov..."
+        cargo install cargo-llvm-cov
+    fi
+    
+    setup_database
+    
+    cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+    cargo llvm-cov --all-features --workspace --html
+    
+    log_info "Coverage report generated in target/llvm-cov/html/"
+}
+
+# Lint and format checks
+run_checks() {
+    log_info "Running code quality checks..."
+    
+    log_info "1. Formatting check..."
+    cargo fmt -- --check
+    
+    log_info "2. Clippy lints..."
+    cargo clippy --all-targets --all-features -- -D warnings
+    
+    log_info "3. Security audit..."
+    if command -v cargo-audit &> /dev/null; then
+        cargo audit
+    else
+        log_warn "cargo-audit not installed, skipping security audit"
+    fi
+    
+    log_info "Code quality checks completed"
+}
+
+# Load testing
+run_load_tests() {
+    log_info "Running load tests..."
+    setup_database
+    
+    # Run performance tests with higher concurrency
+    RUST_LOG=info cargo test load_tests -- --nocapture
+}
+
+# Watch mode for development
+run_watch() {
+    log_info "Running tests in watch mode..."
+    
+    if ! command -v cargo-watch &> /dev/null; then
+        log_info "Installing cargo-watch..."
+        cargo install cargo-watch
+    fi
+    
+    setup_database
+    cargo watch -x "test --lib"
+}
+
+# Show help
+show_help() {
+    echo "Usage: $0 [COMMAND]"
+    echo
+    echo "Commands:"
+    echo "  unit          Run unit tests only"
+    echo "  integration   Run integration tests"
+    echo "  browser       Run browser automation tests"
+    echo "  performance   Run performance tests"
+    echo "  all           Run all test suites (default)"
+    echo "  coverage      Generate test coverage report"
+    echo "  checks        Run linting and formatting checks"
+    echo "  load          Run load tests"
+    echo "  watch         Run tests in watch mode"
+    echo "  cleanup       Clean up test environment"
+    echo "  help          Show this help message"
+    echo
+    echo "Examples:"
+    echo "  $0                 # Run all tests"
+    echo "  $0 unit           # Run only unit tests"
+    echo "  $0 browser        # Run browser tests"
+    echo "  $0 coverage       # Generate coverage report"
+    echo
+    echo "Environment variables:"
+    echo "  DATABASE_URL      PostgreSQL connection string"
+    echo "  RUST_LOG          Logging level (debug, info, warn, error)"
+    echo "  TEST_THREADS      Number of test threads"
+}
+
+# Main script logic
+main() {
+    # Check prerequisites
+    check_docker
+    
+    # Parse command line arguments
+    case "${1:-all}" in
+        unit)
+            run_unit_tests
+            ;;
+        integration)
+            run_integration_tests
+            ;;
+        browser)
+            run_browser_tests
+            ;;
+        performance)
+            run_performance_tests
+            ;;
+        all)
+            run_all_tests
+            ;;
+        coverage)
+            run_coverage
+            ;;
+        checks)
+            run_checks
+            ;;
+        load)
+            run_load_tests
+            ;;
+        watch)
+            run_watch
+            ;;
+        cleanup)
+            cleanup
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        *)
+            log_error "Unknown command: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# Trap signals for cleanup
+trap cleanup EXIT
+
+# Run main function
+main "$@"

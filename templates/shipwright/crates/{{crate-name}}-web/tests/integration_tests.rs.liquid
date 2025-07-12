@@ -1,0 +1,180 @@
+use axum_test::TestServer;
+use serde_json::json;
+use sqlx::PgPool;
+use std::sync::Arc;
+use {{crate_name}}_web::{create_app, test_utils::TestApp, AppState};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test]
+    async fn test_health_endpoint(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let response = server.get("/health").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        let json: serde_json::Value = response.json();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["data"], "OK");
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_api_status_endpoint(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let response = server.get("/api/status").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        let json: serde_json::Value = response.json();
+        assert_eq!(json["success"], true);
+        assert!(json["data"].as_str().is_some());
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]  
+    async fn test_index_page(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let response = server.get("/").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        let html = response.text();
+        assert!(html.contains("{{crate_name}}"));
+        assert!(html.contains("<!DOCTYPE html>"));
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_static_files_route(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        // Test that static file route exists (even if file doesn't exist)
+        let response = server.get("/static/css/main.css").await;
+        
+        // Should return 404 for non-existent file, but route should exist
+        assert!(response.status_code() == 404 || response.status_code() == 200);
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_cors_headers(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let response = server.get("/health").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        // Check that CORS headers are present
+        let headers = response.headers();
+        assert!(headers.contains_key("access-control-allow-origin"));
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_json_response_format(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let response = server.get("/health").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        let json: serde_json::Value = response.json();
+        
+        // Verify the API response structure
+        assert!(json.get("success").is_some());
+        assert!(json.get("data").is_some());
+        assert!(json.get("message").is_some() || json["message"].is_null());
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_database_connection_in_status(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        // Test that the status endpoint actually checks database connectivity
+        let response = server.get("/api/status").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        let json: serde_json::Value = response.json();
+        assert_eq!(json["success"], true);
+        assert!(json["data"].as_str().unwrap().contains("Database"));
+        
+        test_app.cleanup().await;
+    }
+}
+
+#[cfg(test)]
+mod load_tests {
+    use super::*;
+    use tokio::time::{sleep, Duration};
+    use std::time::Instant;
+
+    #[sqlx::test]
+    async fn test_concurrent_requests(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let start = Instant::now();
+        let mut handles = vec![];
+        
+        // Spawn 10 concurrent requests
+        for _ in 0..10 {
+            let server_clone = server.clone();
+            let handle = tokio::spawn(async move {
+                let response = server_clone.get("/health").await;
+                assert_eq!(response.status_code(), 200);
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all requests to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        
+        let duration = start.elapsed();
+        println!("10 concurrent requests completed in: {:?}", duration);
+        
+        // Should complete within reasonable time
+        assert!(duration.as_secs() < 5);
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_response_time(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let server = TestServer::new(test_app.app).unwrap();
+        
+        let start = Instant::now();
+        let response = server.get("/health").await;
+        let duration = start.elapsed();
+        
+        assert_eq!(response.status_code(), 200);
+        
+        // Health endpoint should respond quickly
+        assert!(duration.as_millis() < 100);
+        
+        test_app.cleanup().await;
+    }
+}

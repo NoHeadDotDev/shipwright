@@ -1,0 +1,11 @@
+{%- if use_liveview %}
+//! Notification component
+
+use shipwright_liveview::Html;
+use shipwright_liveview_macros::html;
+
+// Placeholder for notification component
+pub fn notification<T>() -> Html<T> {
+    html! { <div>"Notification component placeholder"</div> }
+}
+{%- endif %}

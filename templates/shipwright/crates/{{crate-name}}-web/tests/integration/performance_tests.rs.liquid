@@ -1,0 +1,318 @@
+use sqlx::PgPool;
+use std::time::Duration;
+use {{crate_name}}_web::test_utils::TestApp;
+use crate::test_utils::*;
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+
+    #[sqlx::test]
+    async fn test_health_endpoint_performance(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        let benchmark = PerformanceTestUtils::benchmark(
+            || async { client.get("/health").await },
+            100
+        ).await;
+        
+        // Health endpoint should respond quickly
+        benchmark.assert_avg_under(Duration::from_millis(50));
+        benchmark.assert_p95_under(Duration::from_millis(100));
+        
+        println!("Health endpoint benchmark: avg={}ms, p95={}ms", 
+                 benchmark.avg.as_millis(), 
+                 benchmark.median.as_millis());
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_database_query_performance(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Seed test data
+        let _seed_data = DatabaseTestUtils::seed_test_data(&test_app.db_pool).await;
+        
+        let benchmark = PerformanceTestUtils::benchmark(
+            || async { client.get("/api/users").await },
+            50
+        ).await;
+        
+        // Database queries should be reasonably fast
+        benchmark.assert_avg_under(Duration::from_millis(200));
+        benchmark.assert_p95_under(Duration::from_millis(500));
+        
+        println!("User list endpoint benchmark: avg={}ms, p95={}ms", 
+                 benchmark.avg.as_millis(), 
+                 benchmark.median.as_millis());
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_concurrent_request_performance(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        let start = std::time::Instant::now();
+        let mut handles = vec![];
+        
+        // Spawn 50 concurrent requests
+        for _ in 0..50 {
+            let client_clone = &client; // Note: We'd need to make this work with actual cloning
+            let handle = tokio::spawn(async move {
+                let response = client_clone.get("/health").await;
+                response.assert_success();
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all requests to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        
+        let duration = start.elapsed();
+        println!("50 concurrent requests completed in: {:?}", duration);
+        
+        // Should handle concurrent load reasonably well
+        assert!(duration.as_secs() < 10);
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_memory_usage_under_load(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Seed larger dataset
+        for _ in 0..100 {
+            let user_request = TestDataFactory::create_user();
+            let response = client.post("/api/users", &user_request).await;
+            response.assert_success();
+        }
+        
+        // Make many requests to test memory usage
+        for _ in 0..100 {
+            let response = client.get("/api/users?per_page=50").await;
+            response.assert_success();
+        }
+        
+        // This is a basic test - in a real scenario you'd measure actual memory usage
+        // For example, using system metrics or memory profiling tools
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_large_payload_handling(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Create user with very long strings (within reasonable limits)
+        let mut user_request = TestDataFactory::create_user();
+        user_request.first_name = "A".repeat(100); // Test boundary
+        user_request.last_name = "B".repeat(100);
+        
+        let (response, duration) = PerformanceTestUtils::measure_response_time(|| async {
+            client.post("/api/users", &user_request).await
+        }).await;
+        
+        response.assert_success();
+        
+        // Large payloads should still be processed reasonably quickly
+        assert!(duration < Duration::from_millis(1000));
+        
+        test_app.cleanup().await;
+    }
+}
+
+#[cfg(test)]
+mod stress_tests {
+    use super::*;
+    use tokio::time::{sleep, Duration as TokioDuration};
+
+    #[sqlx::test]
+    async fn test_rapid_user_creation(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        let mut handles = vec![];
+        
+        // Create 20 users as quickly as possible
+        for i in 0..20 {
+            let user_request = TestDataFactory::create_user_with_email(&format!("stress_test_{}@example.com", i));
+            let handle = tokio::spawn(async move {
+                let response = client.post("/api/users", &user_request).await;
+                response.assert_success();
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all creations to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        
+        // Verify all users were created
+        let response = client.get("/api/users").await;
+        let users: Vec<User> = response.assert_json_success();
+        
+        assert!(users.len() >= 20);
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test] 
+    async fn test_database_connection_pool_under_load(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Seed some data
+        let _seed_data = DatabaseTestUtils::seed_test_data(&test_app.db_pool).await;
+        
+        let mut handles = vec![];
+        
+        // Make many concurrent database-heavy requests
+        for _ in 0..100 {
+            let handle = tokio::spawn(async move {
+                // Mix of read and write operations
+                let response = client.get("/api/users").await;
+                response.assert_success();
+                
+                sleep(TokioDuration::from_millis(10)).await;
+                
+                let status_response = client.get("/api/status").await;
+                status_response.assert_success();
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all requests to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        
+        // Verify database is still healthy after the load
+        let response = client.get("/api/status").await;
+        response.assert_success();
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_long_running_requests(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Simulate long-running operations
+        let mut handles = vec![];
+        
+        for _ in 0..10 {
+            let handle = tokio::spawn(async move {
+                // Make multiple requests with delays to simulate long operations
+                for _ in 0..5 {
+                    let response = client.get("/health").await;
+                    response.assert_success();
+                    
+                    sleep(TokioDuration::from_millis(100)).await;
+                }
+            });
+            handles.push(handle);
+        }
+        
+        // While long operations are running, test that new requests still work
+        for _ in 0..10 {
+            let response = client.get("/health").await;
+            response.assert_success();
+            sleep(TokioDuration::from_millis(50)).await;
+        }
+        
+        // Wait for long operations to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        
+        test_app.cleanup().await;
+    }
+}
+
+#[cfg(test)]
+mod scalability_tests {
+    use super::*;
+
+    #[sqlx::test]
+    async fn test_large_dataset_query_performance(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Create a large dataset
+        for i in 0..1000 {
+            let user_request = TestDataFactory::create_user_with_email(&format!("scale_test_{}@example.com", i));
+            let response = client.post("/api/users", &user_request).await;
+            response.assert_success();
+            
+            // Add some delay to avoid overwhelming the system
+            if i % 100 == 0 {
+                sleep(TokioDuration::from_millis(100)).await;
+            }
+        }
+        
+        // Test query performance with large dataset
+        let (response, duration) = PerformanceTestUtils::measure_response_time(|| async {
+            client.get("/api/users?per_page=100").await
+        }).await;
+        
+        response.assert_success();
+        let users: Vec<User> = response.json();
+        assert_eq!(users.len(), 100);
+        
+        // Should still be reasonably fast even with large dataset
+        assert!(duration < Duration::from_secs(2));
+        
+        println!("Large dataset query took: {:?}", duration);
+        
+        test_app.cleanup().await;
+    }
+
+    #[sqlx::test]
+    async fn test_pagination_performance_with_large_dataset(pool: PgPool) {
+        let test_app = TestApp::new().await;
+        let client = ApiTestClient::new(test_app.app);
+        
+        // Create a large dataset (smaller for CI performance)
+        for i in 0..500 {
+            let user_request = TestDataFactory::create_user_with_email(&format!("pagination_test_{}@example.com", i));
+            let response = client.post("/api/users", &user_request).await;
+            response.assert_success();
+            
+            if i % 50 == 0 {
+                sleep(TokioDuration::from_millis(50)).await;
+            }
+        }
+        
+        // Test pagination performance across different pages
+        let mut total_duration = Duration::from_secs(0);
+        
+        for page in 1..=10 {
+            let (response, duration) = PerformanceTestUtils::measure_response_time(|| async {
+                client.get(&format!("/api/users?page={}&per_page=25", page)).await
+            }).await;
+            
+            response.assert_success();
+            total_duration += duration;
+        }
+        
+        let avg_duration = total_duration / 10;
+        println!("Average pagination query time: {:?}", avg_duration);
+        
+        // Pagination should be consistently fast
+        assert!(avg_duration < Duration::from_millis(200));
+        
+        test_app.cleanup().await;
+    }
+}

@@ -1,0 +1,10 @@
+# Cargo Generate Template Information
+# This file is used by cargo-generate to identify this as a template
+
+[template]
+ignore = [
+    "target/",
+    ".git/",
+    ".gitignore",
+    "Cargo.lock"
+]

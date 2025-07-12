@@ -1,0 +1,13 @@
+[app]
+environment = "production"
+
+{% if use-database -%}
+[database]
+max_connections = 50
+{% endif -%}
+
+{% if use-web -%}
+[server]
+host = "0.0.0.0"
+port = 8080
+{% endif -%}

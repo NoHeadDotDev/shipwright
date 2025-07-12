@@ -1,0 +1,361 @@
+{%- if use_liveview %}
+//! Button component
+//!
+//! Provides a reusable button component with different variants and states.
+
+use shipwright_liveview::Html;
+use shipwright_liveview_macros::html;
+use serde::{Serialize, Deserialize};
+use super::ComponentProps;
+
+/// Button variant styles
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ButtonVariant {
+    Primary,
+    Secondary,
+    Success,
+    Warning,
+    Danger,
+    Info,
+    Light,
+    Dark,
+}
+
+impl ButtonVariant {
+    fn css_class(&self) -> &'static str {
+        match self {
+            ButtonVariant::Primary => "btn-primary",
+            ButtonVariant::Secondary => "btn-secondary", 
+            ButtonVariant::Success => "btn-success",
+            ButtonVariant::Warning => "btn-warning",
+            ButtonVariant::Danger => "btn-danger",
+            ButtonVariant::Info => "btn-info",
+            ButtonVariant::Light => "btn-light",
+            ButtonVariant::Dark => "btn-dark",
+        }
+    }
+}
+
+/// Button size options
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ButtonSize {
+    Small,
+    Medium,
+    Large,
+}
+
+impl ButtonSize {
+    fn css_class(&self) -> &'static str {
+        match self {
+            ButtonSize::Small => "btn-sm",
+            ButtonSize::Medium => "btn-md",
+            ButtonSize::Large => "btn-lg",
+        }
+    }
+}
+
+/// Button component properties
+#[derive(Debug, Clone)]
+pub struct ButtonProps {
+    /// Button text or content
+    pub content: String,
+    /// Button variant (color scheme)
+    pub variant: ButtonVariant,
+    /// Button size
+    pub size: ButtonSize,
+    /// Whether the button is disabled
+    pub disabled: bool,
+    /// Whether the button should take full width
+    pub full_width: bool,
+    /// Loading state
+    pub loading: bool,
+    /// Additional CSS classes
+    pub class: Option<String>,
+    /// Additional CSS styles
+    pub style: Option<String>,
+    /// Button ID
+    pub id: Option<String>,
+    /// Button type (button, submit, reset)
+    pub button_type: ButtonType,
+}
+
+/// Button type attribute
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ButtonType {
+    Button,
+    Submit,
+    Reset,
+}
+
+impl ButtonType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ButtonType::Button => "button",
+            ButtonType::Submit => "submit", 
+            ButtonType::Reset => "reset",
+        }
+    }
+}
+
+impl Default for ButtonProps {
+    fn default() -> Self {
+        Self {
+            content: "Button".to_string(),
+            variant: ButtonVariant::Primary,
+            size: ButtonSize::Medium,
+            disabled: false,
+            full_width: false,
+            loading: false,
+            class: None,
+            style: None,
+            id: None,
+            button_type: ButtonType::Button,
+        }
+    }
+}
+
+impl ComponentProps for ButtonProps {
+    fn class(&self) -> Option<&str> {
+        self.class.as_deref()
+    }
+    
+    fn style(&self) -> Option<&str> {
+        self.style.as_deref()
+    }
+    
+    fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+}
+
+/// Render a button component
+///
+/// # Example
+/// ```rust
+/// use crate::components::button::{button, ButtonProps, ButtonVariant};
+/// 
+/// let props = ButtonProps {
+///     content: "Click me".to_string(),
+///     variant: ButtonVariant::Primary,
+///     ..Default::default()
+/// };
+/// 
+/// let button_html = button(props, Some(MyMessage::ButtonClicked));
+/// ```
+pub fn button<T>(props: ButtonProps, on_click: Option<T>) -> Html<T> 
+where
+    T: Clone,
+{
+    let mut classes = vec!["btn".to_string()];
+    classes.push(props.variant.css_class().to_string());
+    classes.push(props.size.css_class().to_string());
+    
+    if props.full_width {
+        classes.push("btn-full".to_string());
+    }
+    
+    if props.loading {
+        classes.push("btn-loading".to_string());
+    }
+    
+    if let Some(ref custom_class) = props.class {
+        classes.push(custom_class.clone());
+    }
+    
+    let class_str = classes.join(" ");
+    
+    let button_content = if props.loading {
+        html! {
+            <>
+                <span class="btn-spinner"></span>
+                " Loading..."
+            </>
+        }
+    } else {
+        html! { { &props.content } }
+    };
+
+    html! {
+        <button
+            type={ props.button_type.as_str() }
+            class={ class_str }
+            style={ props.style.as_deref().unwrap_or("") }
+            id={ props.id.as_deref().unwrap_or("") }
+            disabled={ props.disabled || props.loading }
+            axm-click={ on_click }
+        >
+            { button_content }
+        </button>
+    }
+}
+
+/// Render a simple primary button
+pub fn primary_button<T>(content: &str, on_click: Option<T>) -> Html<T>
+where
+    T: Clone,
+{
+    button(
+        ButtonProps {
+            content: content.to_string(),
+            variant: ButtonVariant::Primary,
+            ..Default::default()
+        },
+        on_click,
+    )
+}
+
+/// Render a simple secondary button
+pub fn secondary_button<T>(content: &str, on_click: Option<T>) -> Html<T>
+where
+    T: Clone,
+{
+    button(
+        ButtonProps {
+            content: content.to_string(),
+            variant: ButtonVariant::Secondary,
+            ..Default::default()
+        },
+        on_click,
+    )
+}
+
+/// Render a danger button
+pub fn danger_button<T>(content: &str, on_click: Option<T>) -> Html<T>
+where
+    T: Clone,
+{
+    button(
+        ButtonProps {
+            content: content.to_string(),
+            variant: ButtonVariant::Danger,
+            ..Default::default()
+        },
+        on_click,
+    )
+}
+
+/// Button component CSS styles
+pub fn button_styles() -> &'static str {
+    r#"
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        gap: 6px;
+    }
+    
+    .btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    .btn:active:not(:disabled) {
+        transform: translateY(0);
+    }
+    
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Sizes */
+    .btn-sm { padding: 4px 12px; font-size: 12px; }
+    .btn-md { padding: 8px 16px; font-size: 14px; }
+    .btn-lg { padding: 12px 24px; font-size: 16px; }
+    
+    /* Full width */
+    .btn-full { width: 100%; }
+    
+    /* Variants */
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #0052a3; }
+    
+    .btn-secondary { background: #6c757d; color: white; }
+    .btn-secondary:hover:not(:disabled) { background: #5a6268; }
+    
+    .btn-success { background: #28a745; color: white; }
+    .btn-success:hover:not(:disabled) { background: #218838; }
+    
+    .btn-warning { background: #ffc107; color: #212529; }
+    .btn-warning:hover:not(:disabled) { background: #e0a800; }
+    
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-danger:hover:not(:disabled) { background: #c82333; }
+    
+    .btn-info { background: #17a2b8; color: white; }
+    .btn-info:hover:not(:disabled) { background: #138496; }
+    
+    .btn-light { background: #f8f9fa; color: #212529; border: 1px solid #dee2e6; }
+    .btn-light:hover:not(:disabled) { background: #e2e6ea; }
+    
+    .btn-dark { background: #343a40; color: white; }
+    .btn-dark:hover:not(:disabled) { background: #23272b; }
+    
+    /* Loading state */
+    .btn-loading {
+        position: relative;
+        color: transparent !important;
+    }
+    
+    .btn-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 16px;
+        height: 16px;
+        border: 2px solid transparent;
+        border-top: 2px solid currentColor;
+        border-radius: 50%;
+        animation: btn-spin 1s linear infinite;
+    }
+    
+    @keyframes btn-spin {
+        0% { transform: translate(-50%, -50%) rotate(0deg); }
+        100% { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+    "#
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_button_variant_css_class() {
+        assert_eq!(ButtonVariant::Primary.css_class(), "btn-primary");
+        assert_eq!(ButtonVariant::Danger.css_class(), "btn-danger");
+    }
+
+    #[test]
+    fn test_button_size_css_class() {
+        assert_eq!(ButtonSize::Small.css_class(), "btn-sm");
+        assert_eq!(ButtonSize::Large.css_class(), "btn-lg");
+    }
+
+    #[test]
+    fn test_button_type_as_str() {
+        assert_eq!(ButtonType::Submit.as_str(), "submit");
+        assert_eq!(ButtonType::Reset.as_str(), "reset");
+    }
+
+    #[test]
+    fn test_button_props_default() {
+        let props = ButtonProps::default();
+        assert_eq!(props.content, "Button");
+        assert_eq!(props.variant, ButtonVariant::Primary);
+        assert_eq!(props.size, ButtonSize::Medium);
+        assert!(!props.disabled);
+    }
+}
+{%- endif %}

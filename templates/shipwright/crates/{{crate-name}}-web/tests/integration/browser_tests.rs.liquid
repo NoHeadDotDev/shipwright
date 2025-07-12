@@ -1,0 +1,314 @@
+use fantoccini::{Client, ClientBuilder, Locator};
+use serde_json::json;
+use std::time::Duration;
+use tokio::time::sleep;
+use {{crate_name}}_web::test_utils::TestApp;
+
+/// Browser test utilities and setup
+pub struct BrowserTestHarness {
+    client: Client,
+    test_app: TestApp,
+    server_url: String,
+}
+
+impl BrowserTestHarness {
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        // Start test application
+        let test_app = TestApp::new().await;
+        
+        // Start web server in background
+        let server_url = "http://localhost:8080".to_string();
+        
+        // Create WebDriver client
+        let client = ClientBuilder::native()
+            .connect("http://localhost:4444") // Assumes WebDriver server running
+            .await?;
+        
+        Ok(Self {
+            client,
+            test_app,
+            server_url,
+        })
+    }
+    
+    pub async fn goto(&mut self, path: &str) -> Result<(), fantoccini::error::CmdError> {
+        let url = format!("{}{}", self.server_url, path);
+        self.client.goto(&url).await
+    }
+    
+    pub async fn cleanup(self) -> Result<(), fantoccini::error::CmdError> {
+        self.test_app.cleanup().await;
+        self.client.close().await
+    }
+}
+
+/// Page Object Model for the main page
+pub struct MainPage<'a> {
+    client: &'a mut Client,
+}
+
+impl<'a> MainPage<'a> {
+    pub fn new(client: &'a mut Client) -> Self {
+        Self { client }
+    }
+    
+    pub async fn title(&mut self) -> Result<String, fantoccini::error::CmdError> {
+        self.client.title().await
+    }
+    
+    pub async fn header_title(&mut self) -> Result<String, fantoccini::error::CmdError> {
+        self.client
+            .find(Locator::Css(".header__title"))
+            .await?
+            .text()
+            .await
+    }
+    
+    pub async fn click_status_button(&mut self) -> Result<(), fantoccini::error::CmdError> {
+        self.client
+            .find(Locator::Id("status-btn"))
+            .await?
+            .click()
+            .await
+    }
+    
+    pub async fn wait_for_status_section(&mut self) -> Result<(), fantoccini::error::CmdError> {
+        // Wait for status section to become visible
+        self.client
+            .wait()
+            .for_element(Locator::Css("#status-section[style*='block']"))
+            .await?;
+        Ok(())
+    }
+    
+    pub async fn get_status_content(&mut self) -> Result<String, fantoccini::error::CmdError> {
+        self.client
+            .find(Locator::Id("status-content"))
+            .await?
+            .text()
+            .await
+    }
+    
+    pub async fn navigate_to(&mut self, link_text: &str) -> Result<(), fantoccini::error::CmdError> {
+        self.client
+            .find(Locator::LinkText(link_text))
+            .await?
+            .click()
+            .await
+    }
+}
+
+#[cfg(test)]
+mod browser_tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[tokio::test]
+    #[serial]
+    async fn test_page_loads_successfully() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        let mut page = MainPage::new(&mut harness.client);
+        let title = page.title().await.unwrap();
+        
+        assert!(title.contains("{{crate_name}}"));
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_header_displays_correctly() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        let mut page = MainPage::new(&mut harness.client);
+        let header_title = page.header_title().await.unwrap();
+        
+        assert_eq!(header_title, "{{crate_name}}");
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_status_button_functionality() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        let mut page = MainPage::new(&mut harness.client);
+        
+        // Click the status button
+        page.click_status_button().await.unwrap();
+        
+        // Wait for status section to appear
+        page.wait_for_status_section().await.unwrap();
+        
+        // Check that status content is displayed
+        let status_content = page.get_status_content().await.unwrap();
+        assert!(!status_content.is_empty());
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_navigation_links() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        let mut page = MainPage::new(&mut harness.client);
+        
+        // Test navigation to Health page
+        page.navigate_to("Health").await.unwrap();
+        
+        // Wait for navigation to complete
+        sleep(Duration::from_millis(500)).await;
+        
+        let current_url = harness.client.current_url().await.unwrap();
+        assert!(current_url.path().contains("health"));
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_responsive_design() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        // Test mobile viewport
+        harness.client
+            .set_window_size(375, 667) // iPhone size
+            .await
+            .unwrap();
+        
+        let mut page = MainPage::new(&mut harness.client);
+        
+        // Check that header is still visible and functional
+        let header_title = page.header_title().await.unwrap();
+        assert_eq!(header_title, "{{crate_name}}");
+        
+        // Test tablet viewport
+        harness.client
+            .set_window_size(768, 1024)
+            .await
+            .unwrap();
+        
+        let header_title = page.header_title().await.unwrap();
+        assert_eq!(header_title, "{{crate_name}}");
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_javascript_functionality() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        // Execute JavaScript to test app initialization
+        let result = harness.client
+            .execute("return window.app !== undefined", vec![])
+            .await
+            .unwrap();
+        
+        assert!(result.as_bool().unwrap_or(false));
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_error_handling() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        // Test 404 page
+        harness.goto("/nonexistent-page").await.unwrap();
+        
+        // Should handle 404 gracefully
+        let title = harness.client.title().await.unwrap();
+        // Depending on your 404 handler, adjust this assertion
+        assert!(title.contains("404") || title.contains("{{crate_name}}"));
+        
+        harness.cleanup().await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod accessibility_tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[tokio::test]
+    #[serial]
+    async fn test_page_has_proper_heading_structure() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        // Check for h1 element
+        let h1_elements = harness.client
+            .find_all(Locator::Tag("h1"))
+            .await
+            .unwrap();
+        
+        assert!(!h1_elements.is_empty());
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_page_has_proper_alt_attributes() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        // Check that all images have alt attributes
+        let images = harness.client
+            .find_all(Locator::Tag("img"))
+            .await
+            .unwrap();
+        
+        for img in images {
+            let alt = img.attr("alt").await.unwrap();
+            assert!(alt.is_some(), "Image should have alt attribute");
+        }
+        
+        harness.cleanup().await.unwrap();
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_keyboard_navigation() {
+        let mut harness = BrowserTestHarness::new().await.unwrap();
+        
+        harness.goto("/").await.unwrap();
+        
+        // Test Tab navigation
+        harness.client.active_element().await.unwrap();
+        
+        // Send Tab key
+        harness.client
+            .key("\u{E004}") // Tab key
+            .await
+            .unwrap();
+        
+        // Check that focus moved to a focusable element
+        let active_element = harness.client.active_element().await.unwrap();
+        let tag_name = active_element.tag_name().await.unwrap();
+        
+        // Should be on a focusable element
+        assert!(["a", "button", "input", "textarea", "select"].contains(&tag_name.as_str()));
+        
+        harness.cleanup().await.unwrap();
+    }
+}

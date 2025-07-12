@@ -1,0 +1,399 @@
+/**
+ * Main JavaScript file for {{crate_name}} web application
+ * Handles client-side interactions and AJAX requests
+ */
+
+class App {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        this.loadInitialData();
+    }
+
+    setupEventListeners() {
+        // Status button click handler
+        const statusBtn = document.getElementById('status-btn');
+        if (statusBtn) {
+            statusBtn.addEventListener('click', () => this.checkStatus());
+        }
+
+        // Navigation link active state
+        this.setActiveNavLink();
+
+        // Counter functionality
+        this.setupCounterEvents();
+
+        // Dashboard functionality
+        this.setupDashboardEvents();
+    }
+
+    setActiveNavLink() {
+        const currentPath = window.location.pathname;
+        const navLinks = document.querySelectorAll('.nav a');
+        
+        navLinks.forEach(link => {
+            if (link.getAttribute('href') === currentPath) {
+                link.classList.add('nav--active');
+            }
+        });
+    }
+
+    setupCounterEvents() {
+        const incrementBtn = document.getElementById('increment-btn');
+        const decrementBtn = document.getElementById('decrement-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        if (incrementBtn) {
+            incrementBtn.addEventListener('click', () => this.updateCounter('increment'));
+        }
+
+        if (decrementBtn) {
+            decrementBtn.addEventListener('click', () => this.updateCounter('decrement'));
+        }
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => this.updateCounter('reset'));
+        }
+    }
+
+    setupDashboardEvents() {
+        const refreshBtn = document.getElementById('refresh-dashboard');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.refreshDashboard());
+        }
+
+        // Auto-refresh dashboard every 30 seconds
+        if (document.querySelector('.dashboard-page')) {
+            setInterval(() => this.refreshDashboard(), 30000);
+        }
+    }
+
+    async loadInitialData() {
+        console.log('{{crate_name}} web application initialized');
+        
+        // Load dashboard data if on dashboard page
+        if (document.querySelector('.dashboard-page')) {
+            await this.refreshDashboard();
+        }
+    }
+
+    async checkStatus() {
+        const statusBtn = document.getElementById('status-btn');
+        const statusSection = document.getElementById('status-section');
+        const statusContent = document.getElementById('status-content');
+
+        try {
+            // Show loading state
+            statusBtn.innerHTML = '<span class="loading"></span> Checking...';
+            statusBtn.disabled = true;
+            
+            if (statusSection) {
+                statusSection.style.display = 'block';
+            }
+            
+            if (statusContent) {
+                statusContent.innerHTML = 'Checking system status...';
+            }
+
+            // Fetch status from API
+            const response = await fetch('/api/status');
+            const data = await response.json();
+
+            if (statusContent) {
+                if (data.success) {
+                    statusContent.innerHTML = `
+                        <div class="status--success">
+                            <strong>✓ System Status:</strong> ${data.data}
+                        </div>
+                    `;
+                } else {
+                    statusContent.innerHTML = `
+                        <div class="status--error">
+                            <strong>✗ Error:</strong> ${data.message || 'Unknown error'}
+                        </div>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('Error checking status:', error);
+            if (statusContent) {
+                statusContent.innerHTML = `
+                    <div class="status--error">
+                        <strong>✗ Network Error:</strong> Could not connect to server
+                    </div>
+                `;
+            }
+        } finally {
+            // Reset button state
+            if (statusBtn) {
+                statusBtn.innerHTML = 'Check Status';
+                statusBtn.disabled = false;
+            }
+        }
+    }
+
+    async updateCounter(action) {
+        try {
+            const response = await fetch(`/api/counter/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const counterDisplay = document.getElementById('counter-value');
+                if (counterDisplay) {
+                    counterDisplay.textContent = data.data.value;
+                    
+                    // Add animation
+                    counterDisplay.classList.add('counter-updated');
+                    setTimeout(() => {
+                        counterDisplay.classList.remove('counter-updated');
+                    }, 300);
+                }
+            } else {
+                this.showNotification(data.message || 'Counter update failed', 'error');
+            }
+        } catch (error) {
+            console.error('Error updating counter:', error);
+            this.showNotification('Network error', 'error');
+        }
+    }
+
+    async refreshDashboard() {
+        try {
+            const response = await fetch('/api/dashboard/stats');
+            const data = await response.json();
+
+            if (data.success) {
+                this.updateDashboardStats(data.data);
+            }
+        } catch (error) {
+            console.error('Error refreshing dashboard:', error);
+        }
+    }
+
+    updateDashboardStats(stats) {
+        // Update stat cards
+        const statElements = {
+            'users-count': stats.users_count,
+            'active-sessions': stats.active_sessions,
+            'uptime': this.formatUptime(stats.uptime_seconds),
+            'system-status': stats.system_status
+        };
+
+        Object.entries(statElements).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
+
+        // Update last updated time
+        const lastUpdated = document.getElementById('last-updated');
+        if (lastUpdated) {
+            lastUpdated.textContent = this.formatDate(new Date());
+        }
+    }
+
+    // Utility methods
+    static async fetchJson(url, options = {}) {
+        const response = await fetch(url, {
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers,
+            },
+            ...options,
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification--${type}`;
+        notification.innerHTML = `
+            <span class="notification__message">${message}</span>
+            <button class="notification__close">&times;</button>
+        `;
+        
+        // Add to page
+        document.body.appendChild(notification);
+        
+        // Add close functionality
+        const closeBtn = notification.querySelector('.notification__close');
+        closeBtn.addEventListener('click', () => {
+            this.removeNotification(notification);
+        });
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            this.removeNotification(notification);
+        }, 5000);
+
+        // Animate in
+        setTimeout(() => {
+            notification.classList.add('notification--show');
+        }, 10);
+    }
+
+    removeNotification(notification) {
+        if (notification.parentNode) {
+            notification.classList.remove('notification--show');
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }
+    }
+
+    formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    formatUptime(seconds) {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        if (days > 0) {
+            return `${days}d ${hours}h ${minutes}m`;
+        } else if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        } else {
+            return `${minutes}m`;
+        }
+    }
+}
+
+// Initialize the application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.app = new App();
+});
+
+// Add CSS for notifications and animations
+const style = document.createElement('style');
+style.textContent = `
+    .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        padding: 16px 20px;
+        min-width: 300px;
+        z-index: 1000;
+        transform: translateX(100%);
+        transition: transform 0.3s ease-in-out;
+        border-left: 4px solid #007bff;
+    }
+
+    .notification--show {
+        transform: translateX(0);
+    }
+
+    .notification--error {
+        border-left-color: #dc3545;
+    }
+
+    .notification--success {
+        border-left-color: #28a745;
+    }
+
+    .notification--warning {
+        border-left-color: #ffc107;
+    }
+
+    .notification__message {
+        display: block;
+        margin-right: 30px;
+        color: #333;
+    }
+
+    .notification__close {
+        position: absolute;
+        top: 8px;
+        right: 12px;
+        background: none;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        color: #999;
+    }
+
+    .notification__close:hover {
+        color: #333;
+    }
+
+    .counter-updated {
+        animation: pulse 0.3s ease-in-out;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+
+    .loading {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .status--success {
+        padding: 12px;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 6px;
+        color: #155724;
+    }
+
+    .status--error {
+        padding: 12px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 6px;
+        color: #721c24;
+    }
+
+    .nav--active {
+        color: #007bff !important;
+        font-weight: 600;
+    }
+`;
+document.head.appendChild(style);
+
+// Export for testing
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { App };
+}

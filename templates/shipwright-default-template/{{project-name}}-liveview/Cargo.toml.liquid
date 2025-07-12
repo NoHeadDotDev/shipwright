@@ -1,0 +1,34 @@
+{%- if use_liveview %}
+[package]
+name = "{{project-name}}-liveview"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Workspace dependencies
+shipwright-liveview.workspace = true
+shipwright-liveview-macros.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+
+# Internal dependencies
+{{project-name}}-shared = { path = "../{{project-name}}-shared" }
+
+# Additional LiveView dependencies
+{%- if framework == "axum" %}
+axum.workspace = true
+{%- elif framework == "actix-web" %}
+actix-web.workspace = true
+{%- elif framework == "rocket" %}
+rocket.workspace = true
+{%- endif %}
+
+# Async runtime
+tokio.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+{%- endif %}

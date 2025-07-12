@@ -1,0 +1,62 @@
+[template]
+cargo_generate_version = ">=0.19.0"
+ignore = [".git", "target", "Cargo.lock", "node_modules", "dist"]
+
+[placeholders.project_type]
+type = "string"
+prompt = "What type of Shipwright project?"
+choices = ["full-stack", "api-only", "liveview-app", "minimal"]
+default = "full-stack"
+
+[placeholders.framework]
+type = "string"
+prompt = "Which web framework?"
+choices = ["axum", "actix-web", "rocket"]
+default = "axum"
+
+[placeholders.port]
+type = "string"
+prompt = "Default port for development server?"
+default = "3000"
+regex = "^[0-9]{4,5}$"
+
+[placeholders.hot_reload]
+type = "bool"
+prompt = "Enable hot reload?"
+default = true
+
+[placeholders.use_liveview]
+type = "bool"
+prompt = "Include LiveView support?"
+default = true
+
+[conditional.'project_type == "full-stack" || project_type == "liveview-app"'.placeholders.frontend_framework]
+type = "string"
+prompt = "Frontend build tool?"
+choices = ["vite", "webpack", "esbuild", "none"]
+default = "vite"
+
+[conditional.'project_type == "full-stack" || project_type == "liveview-app"'.placeholders.use_typescript]
+type = "bool"
+prompt = "Use TypeScript?"
+default = true
+
+[conditional.'project_type == "full-stack" || project_type == "liveview-app"'.placeholders.css_framework]
+type = "string"
+prompt = "CSS framework?"
+choices = ["tailwind", "bootstrap", "none"]
+default = "tailwind"
+
+[placeholders.database]
+type = "string"
+prompt = "Database setup?"
+choices = ["none", "postgres", "sqlite", "mysql"]
+default = "none"
+
+[conditional.'database != "none"'.placeholders.use_migrations]
+type = "bool"
+prompt = "Include database migrations?"
+default = true
+
+[hooks]
+post = ["scripts/post-generate.rhai"]

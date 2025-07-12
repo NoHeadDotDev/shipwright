@@ -1,0 +1,63 @@
+{%- if use_liveview %}
+//! LiveView pages
+//!
+//! This module contains full-page LiveView components that represent
+//! different routes and views in the application.
+
+pub mod home;
+pub mod counter;
+pub mod chat;
+pub mod components;
+
+use shipwright_liveview::{Html, LiveViewUpgrade};
+{%- if framework == "axum" %}
+use axum::response::IntoResponse;
+{%- elif framework == "actix-web" %}
+use actix_web::{HttpResponse, Result};
+{%- elif framework == "rocket" %}
+use rocket::response::content::RawHtml;
+{%- endif %}
+
+/// Common layout wrapper for all pages
+pub fn layout(title: &str, content: Html<()>) -> Html<()> {
+    shipwright_liveview_macros::html! {
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                <title>{ title } " - {{project-name}}"</title>
+                <link rel="stylesheet" href="/static/css/app.css" />
+                <style>
+                    "body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                     .container { max-width: 1200px; margin: 0 auto; }
+                     .header { border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }
+                     .nav { display: flex; gap: 20px; }
+                     .nav a { color: #0066cc; text-decoration: none; }
+                     .nav a:hover { text-decoration: underline; }"
+                </style>
+                {%- if hot_reload %}
+                <script src="/hot-reload-client.js"></script>
+                {%- endif %}
+            </head>
+            <body>
+                <div class="container">
+                    <header class="header">
+                        <h1>"{{project-name}}"</h1>
+                        <nav class="nav">
+                            <a href="/live">"Home"</a>
+                            <a href="/live/counter">"Counter"</a>
+                            <a href="/live/chat">"Chat"</a>
+                            <a href="/live/components/demo">"Components"</a>
+                        </nav>
+                    </header>
+                    <main>
+                        { content }
+                    </main>
+                </div>
+                <script src="/live/assets/bundle.js"></script>
+            </body>
+        </html>
+    }
+}
+{%- endif %}

@@ -1,0 +1,57 @@
+pub mod app;
+pub mod controllers;
+pub mod middleware;
+pub mod routes;
+pub mod state;
+
+pub use app::*;
+pub use state::*;
+
+#[cfg(feature = "test-utils")]
+pub mod test_utils {
+    use super::*;
+    use {{crate_name}}_config::AppConfig;
+    use {{crate_name}}_db::DatabaseManager;
+    use axum::Router;
+    use sqlx::PgPool;
+    use std::sync::Arc;
+
+    pub struct TestApp {
+        pub app: Router,
+        pub state: Arc<AppState>,
+        pub db_pool: PgPool,
+    }
+
+    impl TestApp {
+        pub async fn new() -> Self {
+            let config = AppConfig::test_config();
+            let db = DatabaseManager::new(&config.database_url).await.unwrap();
+            db.run_migrations().await.unwrap();
+
+            let state = Arc::new(AppState::new(db.clone(), config.clone()));
+            let app = app::create_app(state.clone());
+
+            Self {
+                app,
+                state,
+                db_pool: db.pool(),
+            }
+        }
+
+        pub async fn cleanup(&self) {
+            sqlx::query("TRUNCATE TABLE users CASCADE")
+                .execute(&self.db_pool)
+                .await
+                .ok();
+        }
+    }
+
+    #[macro_export]
+    macro_rules! test_request {
+        ($method:ident, $uri:expr, $app:expr) => {
+            axum_test::TestServer::new($app.clone())
+                .unwrap()
+                .$method($uri)
+        };
+    }
+}

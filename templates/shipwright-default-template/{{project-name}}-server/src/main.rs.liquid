@@ -1,0 +1,261 @@
+{%- if framework == "axum" %}
+use axum::{
+    Router,
+    routing::{get, post, put, delete},
+    response::Html,
+    extract::State,
+    http::StatusCode,
+};
+use tower_http::{
+    services::{ServeDir, ServeFile},
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    trace::TraceLayer,
+};
+{%- elif framework == "actix-web" %}
+use actix_web::{web, App, HttpServer, HttpResponse, middleware};
+use actix_files as fs;
+use actix_cors::Cors;
+{%- elif framework == "rocket" %}
+#[macro_use] extern crate rocket;
+use rocket::{State, response::content::RawHtml};
+{%- endif %}
+use std::net::SocketAddr;
+use tracing::{info, error};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+{%- if hot_reload %}
+use shipwright_liveview_hotreload::HotReloadLayer;
+{%- endif %}
+{%- if use_liveview %}
+use {{crate_name}}_liveview::LiveViewRouter;
+{%- endif %}
+use {{crate_name}}_shared::Config;
+
+mod controllers;
+
+#[derive(Clone)]
+struct AppState {
+    config: Config,
+    {%- if database != "none" %}
+    db: sqlx::SqlitePool,
+    {%- endif %}
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Load environment variables
+    dotenv::dotenv().ok();
+
+    // Initialize tracing
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "{{crate_name}}=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    // Load configuration
+    let config = Config::from_env()?;
+    
+    {%- if database != "none" %}
+    // Connect to database
+    let db = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(&config.database_url)
+        .await?;
+    
+    // Run migrations
+    sqlx::migrate!("../migrations").run(&db).await?;
+    {%- endif %}
+
+    let app_state = AppState {
+        config: config.clone(),
+        {%- if database != "none" %}
+        db,
+        {%- endif %}
+    };
+
+    {%- if framework == "axum" %}
+    // Build application router
+    let app = Router::new()
+        .route("/", get(index))
+        // Health check routes
+        .route("/health", get(controllers::health::health_check))
+        .route("/health/detailed", get(controllers::health::detailed_health_check))
+        .route("/health/ready", get(controllers::health::readiness_check))
+        .route("/health/live", get(controllers::health::liveness_check))
+        {%- if database != "none" %}
+        // User management routes
+        .route("/users", 
+            get(controllers::users::list_users)
+            .post(controllers::users::create_user)
+        )
+        .route("/users/:id", 
+            get(controllers::users::get_user)
+            .put(controllers::users::update_user)
+            .delete(controllers::users::delete_user)
+        )
+        {%- endif %}
+        {%- if use_liveview %}
+        .nest("/live", LiveViewRouter::new())
+        {%- endif %}
+        .nest_service("/static", ServeDir::new("static"))
+        {%- if hot_reload %}
+        .layer(HotReloadLayer::new())
+        {%- endif %}
+        .layer(CompressionLayer::new())
+        .layer(CorsLayer::permissive())
+        .layer(TraceLayer::new_for_http())
+        .with_state(app_state);
+
+    // Start server
+    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
+    info!("Starting server on http://{}", addr);
+    
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+    
+    {%- elif framework == "actix-web" %}
+    // Start server
+    let addr = format!("127.0.0.1:{}", config.port);
+    info!("Starting server on http://{}", addr);
+    
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(app_state.clone()))
+            .wrap(middleware::Logger::default())
+            .wrap(middleware::Compress::default())
+            .wrap(Cors::permissive())
+            .route("/", web::get().to(index))
+            // Health check routes
+            .route("/health", web::get().to(controllers::health::health_check))
+            .route("/health/detailed", web::get().to(controllers::health::detailed_health_check))
+            .route("/health/ready", web::get().to(controllers::health::readiness_check))
+            .route("/health/live", web::get().to(controllers::health::liveness_check))
+            {%- if database != "none" %}
+            // User management routes
+            .route("/users", web::get().to(controllers::users::list_users))
+            .route("/users", web::post().to(controllers::users::create_user))
+            .route("/users/{id}", web::get().to(controllers::users::get_user))
+            .route("/users/{id}", web::put().to(controllers::users::update_user))
+            .route("/users/{id}", web::delete().to(controllers::users::delete_user))
+            {%- endif %}
+            {%- if use_liveview %}
+            .service(web::scope("/live").configure(LiveViewRouter::configure))
+            {%- endif %}
+            .service(fs::Files::new("/static", "static").show_files_listing())
+    })
+    .bind(&addr)?
+    .run()
+    .await?;
+    
+    {%- elif framework == "rocket" %}
+    // Build and launch Rocket
+    rocket::build()
+        .manage(app_state)
+        .mount("/", routes![index])
+        .mount("/health", routes![
+            controllers::health::health_check,
+            controllers::health::detailed_health_check,
+            controllers::health::readiness_check,
+            controllers::health::liveness_check
+        ])
+        {%- if database != "none" %}
+        .mount("/users", routes![
+            controllers::users::list_users,
+            controllers::users::create_user,
+            controllers::users::get_user,
+            controllers::users::update_user,
+            controllers::users::delete_user
+        ])
+        {%- endif %}
+        {%- if use_liveview %}
+        .mount("/live", LiveViewRouter::routes())
+        {%- endif %}
+        .mount("/static", FileServer::from("static"))
+        .launch()
+        .await?;
+    {%- endif %}
+
+    Ok(())
+}
+
+{%- if framework == "axum" %}
+async fn index(State(state): State<AppState>) -> Html<String> {
+    Html(format!(r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    {%- if css_framework == "tailwind" %}
+    <link rel="stylesheet" href="/static/css/app.css">
+    {%- endif %}
+    {%- if hot_reload %}
+    <script src="/hot-reload-client.js"></script>
+    {%- endif %}
+</head>
+<body>
+    <h1>Welcome to {}!</h1>
+    <p>Your Shipwright application is running.</p>
+</body>
+</html>
+    "#, state.config.name, state.config.name))
+}
+
+
+{%- elif framework == "actix-web" %}
+async fn index(data: web::Data<AppState>) -> HttpResponse {
+    let html = format!(r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    {%- if css_framework == "tailwind" %}
+    <link rel="stylesheet" href="/static/css/app.css">
+    {%- endif %}
+    {%- if hot_reload %}
+    <script src="/hot-reload-client.js"></script>
+    {%- endif %}
+</head>
+<body>
+    <h1>Welcome to {}!</h1>
+    <p>Your Shipwright application is running.</p>
+</body>
+</html>
+    "#, data.config.name, data.config.name);
+    
+    HttpResponse::Ok().content_type("text/html").body(html)
+}
+
+
+{%- elif framework == "rocket" %}
+#[get("/")]
+fn index(state: &State<AppState>) -> RawHtml<String> {
+    RawHtml(format!(r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    {%- if css_framework == "tailwind" %}
+    <link rel="stylesheet" href="/static/css/app.css">
+    {%- endif %}
+    {%- if hot_reload %}
+    <script src="/hot-reload-client.js"></script>
+    {%- endif %}
+</head>
+<body>
+    <h1>Welcome to {}!</h1>
+    <p>Your Shipwright application is running.</p>
+</body>
+</html>
+    "#, state.config.name, state.config.name))
+}
+
+{%- endif %}

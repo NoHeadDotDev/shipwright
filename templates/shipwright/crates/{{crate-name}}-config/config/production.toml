@@ -1,0 +1,68 @@
+# Production Configuration for {{project-name}}
+# This configuration is used when {{upper_case_name}}_ENV=production
+# 
+# IMPORTANT: 
+# - Set {{upper_case_name}}_DATABASE_URL environment variable
+# - Set {{upper_case_name}}_JWT_SECRET environment variable
+# - Review all security settings before deployment
+
+[database]
+url = "postgresql://user:password@localhost/{{crate_name}}_prod"
+max_connections = 20
+min_connections = 5
+connect_timeout = 10
+max_lifetime = 1800
+log_queries = false
+auto_migrate = false
+
+[server]
+host = "0.0.0.0"
+port = 8080
+cors_enabled = true
+cors_origins = ["https://{{crate_name}}.com", "https://www.{{crate_name}}.com"]
+request_timeout = 30
+max_body_size = 5242880  # 5MB
+compression = true
+static_dir = "/var/www/{{crate_name}}/static"
+dev_mode = false
+
+[logging]
+level = "info"
+format = "json"
+file_enabled = true
+file_path = "/var/log/{{crate_name}}/app.log"
+max_file_size = 104857600  # 100MB
+max_files = 30
+console_enabled = true
+structured = true
+
+[security]
+jwt_secret = "CHANGE-ME-SET-VIA-ENVIRONMENT-VARIABLE"
+jwt_expiration = 3600  # 1 hour
+https_redirect = true
+secure_cookies = true
+session_timeout = 1800  # 30 minutes
+rate_limiting = true
+rate_limit_rpm = 60
+
+[app]
+name = "{{project-name}}"
+version = "0.1.0"
+debug = false
+
+[app.features]
+# Feature flags for production
+experimental_features = false
+debug_toolbar = false
+hot_reload = false
+detailed_errors = false
+monitoring = true
+metrics = true
+
+[app.custom]
+# Custom production settings
+api_base_url = "https://api.{{crate_name}}.com"
+frontend_url = "https://{{crate_name}}.com"
+upload_dir = "/var/uploads/{{crate_name}}"
+temp_dir = "/tmp/{{crate_name}}"
+cdn_url = "https://cdn.{{crate_name}}.com"

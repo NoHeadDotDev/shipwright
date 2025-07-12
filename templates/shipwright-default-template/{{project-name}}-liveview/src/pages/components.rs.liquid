@@ -1,0 +1,490 @@
+{%- if use_liveview %}
+//! Components demo page
+//!
+//! Showcases reusable LiveView components and demonstrates component
+//! composition patterns.
+
+use shipwright_liveview::{LiveView, Html, Updated, EventData, LiveViewUpgrade};
+use shipwright_liveview_macros::{html, LiveView as LiveViewDerive};
+use serde::{Serialize, Deserialize};
+{%- if framework == "axum" %}
+use axum::response::IntoResponse;
+{%- elif framework == "actix-web" %}
+use actix_web::{HttpResponse, Result};
+{%- elif framework == "rocket" %}
+use rocket::{get, response::content::RawHtml};
+{%- endif %}
+use crate::components::*;
+
+/// Components demo page state
+#[derive(LiveViewDerive, Clone, Default)]
+pub struct ComponentsDemo {
+    /// Progress bar value (0-100)
+    pub progress_value: u8,
+    /// Toggle switch state
+    pub toggle_enabled: bool,
+    /// Current tab index
+    pub active_tab: usize,
+    /// Notification message
+    pub notification: Option<String>,
+    /// Modal visibility
+    pub show_modal: bool,
+    /// Form data
+    pub form_data: FormData,
+}
+
+/// Form data for the demo
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FormData {
+    pub name: String,
+    pub email: String,
+    pub message: String,
+    pub subscription: bool,
+}
+
+/// Messages for the components demo
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DemoMessage {
+    /// Update progress bar
+    SetProgress(u8),
+    /// Toggle the switch
+    Toggle,
+    /// Change active tab
+    SetActiveTab(usize),
+    /// Show notification
+    ShowNotification(String),
+    /// Hide notification
+    HideNotification,
+    /// Show modal
+    ShowModal,
+    /// Hide modal
+    HideModal,
+    /// Update form field
+    UpdateFormField(String, String),
+    /// Submit form
+    SubmitForm,
+    /// Reset form
+    ResetForm,
+    /// Increment progress
+    IncrementProgress,
+    /// Decrement progress
+    DecrementProgress,
+}
+
+impl LiveView for ComponentsDemo {
+    type Message = DemoMessage;
+
+    fn update(mut self, msg: Self::Message, _data: Option<EventData>) -> Updated<Self> {
+        match msg {
+            DemoMessage::SetProgress(value) => {
+                self.progress_value = value.min(100);
+            }
+            DemoMessage::Toggle => {
+                self.toggle_enabled = !self.toggle_enabled;
+                let status = if self.toggle_enabled { "enabled" } else { "disabled" };
+                self.notification = Some(format!("Toggle {}", status));
+            }
+            DemoMessage::SetActiveTab(index) => {
+                self.active_tab = index.min(2); // Assuming 3 tabs (0, 1, 2)
+            }
+            DemoMessage::ShowNotification(message) => {
+                self.notification = Some(message);
+            }
+            DemoMessage::HideNotification => {
+                self.notification = None;
+            }
+            DemoMessage::ShowModal => {
+                self.show_modal = true;
+            }
+            DemoMessage::HideModal => {
+                self.show_modal = false;
+            }
+            DemoMessage::UpdateFormField(field, value) => {
+                match field.as_str() {
+                    "name" => self.form_data.name = value,
+                    "email" => self.form_data.email = value,
+                    "message" => self.form_data.message = value,
+                    "subscription" => self.form_data.subscription = value == "true",
+                    _ => {}
+                }
+            }
+            DemoMessage::SubmitForm => {
+                if !self.form_data.name.is_empty() && !self.form_data.email.is_empty() {
+                    self.notification = Some(format!("Form submitted for {}", self.form_data.name));
+                    self.form_data = FormData::default();
+                } else {
+                    self.notification = Some("Please fill in all required fields".to_string());
+                }
+            }
+            DemoMessage::ResetForm => {
+                self.form_data = FormData::default();
+                self.notification = Some("Form reset".to_string());
+            }
+            DemoMessage::IncrementProgress => {
+                self.progress_value = (self.progress_value + 10).min(100);
+            }
+            DemoMessage::DecrementProgress => {
+                self.progress_value = self.progress_value.saturating_sub(10);
+            }
+        }
+
+        Updated::new(self)
+    }
+
+    fn render(&self) -> Html<Self::Message> {
+        html! {
+            <div class="components-demo">
+                <div class="demo-header">
+                    <h1>"Component Showcase"</h1>
+                    <p>"Explore reusable LiveView components and their interactions"</p>
+                </div>
+
+                // Notification component
+                { if let Some(ref message) = self.notification {
+                    html! {
+                        <div class="notification">
+                            <span>{ message }</span>
+                            <button 
+                                axm-click={ DemoMessage::HideNotification }
+                                class="notification-close"
+                            >
+                                "×"
+                            </button>
+                        </div>
+                    }
+                } else {
+                    html! { <></> }
+                }}
+
+                // Tab component
+                <div class="component-section">
+                    <h2>"Tab Component"</h2>
+                    <div class="tabs">
+                        <div class="tab-headers">
+                            <button 
+                                class={ if self.active_tab == 0 { "tab-header active" } else { "tab-header" } }
+                                axm-click={ DemoMessage::SetActiveTab(0) }
+                            >
+                                "Progress Bars"
+                            </button>
+                            <button 
+                                class={ if self.active_tab == 1 { "tab-header active" } else { "tab-header" } }
+                                axm-click={ DemoMessage::SetActiveTab(1) }
+                            >
+                                "Form Controls"
+                            </button>
+                            <button 
+                                class={ if self.active_tab == 2 { "tab-header active" } else { "tab-header" } }
+                                axm-click={ DemoMessage::SetActiveTab(2) }
+                            >
+                                "Interactive Elements"
+                            </button>
+                        </div>
+
+                        <div class="tab-content">
+                            { match self.active_tab {
+                                0 => self.render_progress_tab(),
+                                1 => self.render_form_tab(),
+                                2 => self.render_interactive_tab(),
+                                _ => html! { <div>"Unknown tab"</div> }
+                            }}
+                        </div>
+                    </div>
+                </div>
+
+                // Modal component
+                { if self.show_modal {
+                    html! {
+                        <div class="modal-overlay" axm-click={ DemoMessage::HideModal }>
+                            <div class="modal-content" axm-click-stop>
+                                <div class="modal-header">
+                                    <h3>"Example Modal"</h3>
+                                    <button 
+                                        class="modal-close"
+                                        axm-click={ DemoMessage::HideModal }
+                                    >
+                                        "×"
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <p>"This is an example modal dialog built with LiveView components."</p>
+                                    <p>"You can include any content here, including other LiveView components!"</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button 
+                                        class="btn btn-primary"
+                                        axm-click={ DemoMessage::HideModal }
+                                    >
+                                        "Close"
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! { <></> }
+                }}
+
+                <style>
+                    ".components-demo { max-width: 1000px; margin: 0 auto; }
+                     .demo-header { text-align: center; margin-bottom: 40px; }
+                     .component-section { margin: 40px 0; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+                     .notification { position: fixed; top: 20px; right: 20px; background: #e7f3ff; border: 1px solid #b3d9ff; padding: 15px 20px; border-radius: 5px; display: flex; align-items: center; gap: 10px; z-index: 1000; }
+                     .notification-close { background: none; border: none; font-size: 18px; cursor: pointer; color: #666; }
+                     .tabs { }
+                     .tab-headers { display: flex; border-bottom: 1px solid #ddd; }
+                     .tab-header { padding: 10px 20px; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; }
+                     .tab-header.active { border-bottom-color: #0066cc; color: #0066cc; }
+                     .tab-content { padding: 20px 0; }
+                     .progress-demo { display: grid; gap: 20px; }
+                     .progress-item { display: flex; flex-direction: column; gap: 10px; }
+                     .progress-controls { display: flex; gap: 10px; align-items: center; }
+                     .progress-bar { width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; }
+                     .progress-fill { height: 100%; background: linear-gradient(90deg, #0066cc, #4da6ff); transition: width 0.3s ease; }
+                     .form-demo { display: grid; gap: 15px; max-width: 400px; }
+                     .form-group { display: flex; flex-direction: column; gap: 5px; }
+                     .form-group label { font-weight: bold; }
+                     .form-group input, .form-group textarea { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+                     .form-group textarea { height: 80px; resize: vertical; }
+                     .checkbox-group { display: flex; align-items: center; gap: 8px; }
+                     .form-actions { display: flex; gap: 10px; }
+                     .interactive-demo { display: grid; gap: 20px; }
+                     .toggle-demo { display: flex; align-items: center; gap: 15px; }
+                     .toggle { position: relative; width: 60px; height: 30px; background: #ccc; border-radius: 15px; cursor: pointer; transition: background 0.3s; }
+                     .toggle.active { background: #0066cc; }
+                     .toggle-handle { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; background: white; border-radius: 50%; transition: transform 0.3s; }
+                     .toggle.active .toggle-handle { transform: translateX(30px); }
+                     .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+                     .btn-primary { background: #0066cc; color: white; }
+                     .btn-secondary { background: #666; color: white; }
+                     .btn-danger { background: #dc3545; color: white; }
+                     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+                     .modal-content { background: white; border-radius: 8px; max-width: 500px; width: 90%; }
+                     .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #eee; }
+                     .modal-header h3 { margin: 0; }
+                     .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; }
+                     .modal-body { padding: 20px; }
+                     .modal-footer { padding: 20px; border-top: 1px solid #eee; text-align: right; }"
+                </style>
+            </div>
+        }
+    }
+}
+
+impl ComponentsDemo {
+    fn render_progress_tab(&self) -> Html<DemoMessage> {
+        html! {
+            <div class="progress-demo">
+                <div class="progress-item">
+                    <h3>"Progress Bar (" { self.progress_value } "%)"</h3>
+                    <div class="progress-bar">
+                        <div 
+                            class="progress-fill" 
+                            style={ format!("width: {}%", self.progress_value) }
+                        ></div>
+                    </div>
+                    <div class="progress-controls">
+                        <button 
+                            class="btn btn-secondary"
+                            axm-click={ DemoMessage::DecrementProgress }
+                            disabled={ self.progress_value == 0 }
+                        >
+                            "-10"
+                        </button>
+                        <button 
+                            class="btn btn-primary"
+                            axm-click={ DemoMessage::IncrementProgress }
+                            disabled={ self.progress_value >= 100 }
+                        >
+                            "+10"
+                        </button>
+                        <button 
+                            class="btn btn-secondary"
+                            axm-click={ DemoMessage::SetProgress(0) }
+                        >
+                            "Reset"
+                        </button>
+                        <button 
+                            class="btn btn-secondary"
+                            axm-click={ DemoMessage::SetProgress(100) }
+                        >
+                            "Complete"
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    fn render_form_tab(&self) -> Html<DemoMessage> {
+        html! {
+            <div class="form-demo">
+                <h3>"Contact Form"</h3>
+                <div class="form-group">
+                    <label for="name">"Name *"</label>
+                    <input 
+                        type="text" 
+                        id="name"
+                        value={ &self.form_data.name }
+                        placeholder="Enter your name"
+                        axm-input={ DemoMessage::UpdateFormField("name".to_string(), self.form_data.name.clone()) }
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="email">"Email *"</label>
+                    <input 
+                        type="email" 
+                        id="email"
+                        value={ &self.form_data.email }
+                        placeholder="Enter your email"
+                        axm-input={ DemoMessage::UpdateFormField("email".to_string(), self.form_data.email.clone()) }
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="message">"Message"</label>
+                    <textarea 
+                        id="message"
+                        value={ &self.form_data.message }
+                        placeholder="Enter your message"
+                        axm-input={ DemoMessage::UpdateFormField("message".to_string(), self.form_data.message.clone()) }
+                    ></textarea>
+                </div>
+                <div class="checkbox-group">
+                    <input 
+                        type="checkbox" 
+                        id="subscription"
+                        checked={ self.form_data.subscription }
+                        axm-change={ DemoMessage::UpdateFormField("subscription".to_string(), (!self.form_data.subscription).to_string()) }
+                    />
+                    <label for="subscription">"Subscribe to newsletter"</label>
+                </div>
+                <div class="form-actions">
+                    <button 
+                        class="btn btn-primary"
+                        axm-click={ DemoMessage::SubmitForm }
+                    >
+                        "Submit"
+                    </button>
+                    <button 
+                        class="btn btn-secondary"
+                        axm-click={ DemoMessage::ResetForm }
+                    >
+                        "Reset"
+                    </button>
+                </div>
+            </div>
+        }
+    }
+
+    fn render_interactive_tab(&self) -> Html<DemoMessage> {
+        html! {
+            <div class="interactive-demo">
+                <div class="toggle-demo">
+                    <h3>"Toggle Switch"</h3>
+                    <div 
+                        class={ if self.toggle_enabled { "toggle active" } else { "toggle" } }
+                        axm-click={ DemoMessage::Toggle }
+                    >
+                        <div class="toggle-handle"></div>
+                    </div>
+                    <span>{ if self.toggle_enabled { "Enabled" } else { "Disabled" } }</span>
+                </div>
+
+                <div>
+                    <h3>"Modal Dialog"</h3>
+                    <button 
+                        class="btn btn-primary"
+                        axm-click={ DemoMessage::ShowModal }
+                    >
+                        "Show Modal"
+                    </button>
+                </div>
+
+                <div>
+                    <h3>"Notifications"</h3>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button 
+                            class="btn btn-primary"
+                            axm-click={ DemoMessage::ShowNotification("Info: This is an information message".to_string()) }
+                        >
+                            "Show Info"
+                        </button>
+                        <button 
+                            class="btn btn-secondary"
+                            axm-click={ DemoMessage::ShowNotification("Success: Operation completed successfully".to_string()) }
+                        >
+                            "Show Success"
+                        </button>
+                        <button 
+                            class="btn btn-danger"
+                            axm-click={ DemoMessage::ShowNotification("Error: Something went wrong".to_string()) }
+                        >
+                            "Show Error"
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}
+
+/// Route handler for the components demo page
+{%- if framework == "axum" %}
+pub async fn components_demo(live: LiveViewUpgrade) -> impl IntoResponse {
+    let view = ComponentsDemo::default();
+
+    live.response(move |embed| {
+        super::layout("Components", embed.embed(view))
+    })
+}
+{%- elif framework == "actix-web" %}
+pub async fn components_demo() -> Result<HttpResponse> {
+    // Actix-Web LiveView integration would be implemented here
+    Ok(HttpResponse::Ok().content_type("text/html").body("Components demo page"))
+}
+{%- elif framework == "rocket" %}
+#[get("/components/demo")]
+pub fn components_demo() -> RawHtml<String> {
+    // Rocket LiveView integration would be implemented here
+    RawHtml("Components demo page".to_string())
+}
+{%- endif %}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_progress_increment() {
+        let demo = ComponentsDemo::default();
+        let updated = demo.update(DemoMessage::IncrementProgress, None);
+        assert_eq!(updated.view.progress_value, 10);
+    }
+
+    #[test]
+    fn test_progress_max() {
+        let mut demo = ComponentsDemo::default();
+        demo.progress_value = 95;
+        let updated = demo.update(DemoMessage::IncrementProgress, None);
+        assert_eq!(updated.view.progress_value, 100);
+    }
+
+    #[test]
+    fn test_toggle() {
+        let demo = ComponentsDemo::default();
+        let updated = demo.update(DemoMessage::Toggle, None);
+        assert!(updated.view.toggle_enabled);
+        assert!(updated.view.notification.is_some());
+    }
+
+    #[test]
+    fn test_form_update() {
+        let demo = ComponentsDemo::default();
+        let updated = demo.update(
+            DemoMessage::UpdateFormField("name".to_string(), "John".to_string()),
+            None
+        );
+        assert_eq!(updated.view.form_data.name, "John");
+    }
+}
+{%- endif %}

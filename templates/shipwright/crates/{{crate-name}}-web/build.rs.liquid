@@ -1,0 +1,53 @@
+use std::fs;
+use std::path::Path;
+
+fn main() {
+    println!("cargo:rerun-if-changed=assets/");
+    
+    // Create static directory if it doesn't exist
+    let static_dir = Path::new("static");
+    if !static_dir.exists() {
+        fs::create_dir_all(static_dir).expect("Failed to create static directory");
+        fs::create_dir_all(static_dir.join("css")).expect("Failed to create static/css directory");
+        fs::create_dir_all(static_dir.join("js")).expect("Failed to create static/js directory");
+        fs::create_dir_all(static_dir.join("vendor")).expect("Failed to create static/vendor directory");
+    }
+    
+    // Copy CSS files
+    copy_assets("assets/css", "static/css");
+    
+    // Copy JavaScript files
+    copy_assets("assets/js", "static/js");
+    
+    // Copy vendor files
+    copy_assets("assets/vendor", "static/vendor");
+    
+    println!("Assets copied to static directory");
+}
+
+fn copy_assets(src: &str, dst: &str) {
+    let src_path = Path::new(src);
+    let dst_path = Path::new(dst);
+    
+    if !src_path.exists() {
+        return;
+    }
+    
+    if !dst_path.exists() {
+        fs::create_dir_all(dst_path).expect("Failed to create destination directory");
+    }
+    
+    if let Ok(entries) = fs::read_dir(src_path) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let src_file = entry.path();
+                let dst_file = dst_path.join(entry.file_name());
+                
+                if src_file.is_file() {
+                    fs::copy(&src_file, &dst_file).expect("Failed to copy asset file");
+                    println!("Copied: {:?} -> {:?}", src_file, dst_file);
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,55 @@
+[package]
+name = "{{project-name}}-server"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Workspace dependencies
+{%- if framework == "axum" %}
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+{%- elif framework == "actix-web" %}
+actix-web.workspace = true
+actix-files.workspace = true
+actix-cors.workspace = true
+{%- elif framework == "rocket" %}
+rocket.workspace = true
+{%- endif %}
+
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+{%- if hot_reload %}
+shipwright-liveview-hotreload.workspace = true
+{%- endif %}
+
+{%- if use_liveview %}
+shipwright-liveview.workspace = true
+{{project-name}}-liveview = { path = "../{{project-name}}-liveview" }
+{%- endif %}
+
+# Internal dependencies
+{{project-name}}-shared = { path = "../{{project-name}}-shared" }
+
+{%- if database != "none" %}
+# Database
+sqlx.workspace = true
+{%- endif %}
+
+# Additional dependencies
+uuid.workspace = true
+chrono.workspace = true
+once_cell.workspace = true
+
+# Environment variables
+dotenv = "0.15"
+
+[dev-dependencies]
+pretty_assertions.workspace = true
