@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "shipwright-liveview",
+    "shipwright-liveview-macros",
+    "examples/*",
+]
+resolver = "2"

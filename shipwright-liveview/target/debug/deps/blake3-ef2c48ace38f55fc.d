@@ -1,0 +1,12 @@
+/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/blake3-ef2c48ace38f55fc.d: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/guts.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/hazmat.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/platform.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/ffi_neon.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/portable.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/io.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/join.rs
+
+/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/libblake3-ef2c48ace38f55fc.rmeta: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/guts.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/hazmat.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/platform.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/ffi_neon.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/portable.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/io.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/join.rs
+
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/lib.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/guts.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/hazmat.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/platform.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/ffi_neon.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/portable.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/io.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.2/src/join.rs:

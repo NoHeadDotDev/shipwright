@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shipwright LiveView Client Example</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+        
+        .example {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .status {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0.25rem;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 0.25rem 0;
+        }
+        
+        .counter {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            margin: 1rem 0;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Shipwright LiveView Client Example</h1>
+    
+    <div class="status disconnected" id="status">
+        Disconnected
+    </div>
+    
+    <!-- Auto-initialization example -->
+    <div class="example">
+        <h2>Auto-initialization</h2>
+        <p>This div will automatically connect when the page loads:</p>
+        <div data-liveview-url="ws://localhost:3000/live" data-liveview-token="example-token">
+            <div class="counter" id="counter">0</div>
+            <button lv-click="increment">Increment</button>
+            <button lv-click="decrement">Decrement</button>
+            <button lv-click="reset">Reset</button>
+        </div>
+    </div>
+    
+    <!-- Manual initialization example -->
+    <div class="example">
+        <h2>Manual Initialization</h2>
+        <div id="manual-container">
+            <div class="counter" id="manual-counter">0</div>
+            <button id="connect-btn">Connect</button>
+            <button id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+    </div>
+    
+    <!-- Event examples -->
+    <div class="example">
+        <h2>Event Examples</h2>
+        
+        <h3>Form with Debounced Search</h3>
+        <form lv-submit="search:prevent">
+            <input 
+                type="text" 
+                name="query" 
+                placeholder="Search (debounced 300ms)..."
+                lv-keyup="search:debounce-300"
+            />
+            <button type="submit">Search</button>
+        </form>
+        
+        <h3>Toggle Visibility</h3>
+        <button lv-click="toggle-content">Toggle Content</button>
+        <div id="toggleable-content" class="hidden">
+            <p>This content can be toggled!</p>
+        </div>
+        
+        <h3>Form State Recovery</h3>
+        <form lv-submit="save-form:prevent">
+            <input type="text" name="title" placeholder="Title (preserved during updates)" />
+            <textarea name="content" placeholder="Content (preserved during updates)"></textarea>
+            <button type="submit">Save</button>
+        </form>
+    </div>
+    
+    <!-- Client Commands Example -->
+    <div class="example">
+        <h2>Client Commands</h2>
+        <button lv-click="show-message">Show Message</button>
+        <button lv-click="hide-message">Hide Message</button>
+        <button lv-click="add-class">Add Class</button>
+        <button lv-click="focus-input">Focus Input</button>
+        
+        <div id="message" class="hidden" style="margin-top: 1rem; padding: 1rem; background: #e7f3ff; border-radius: 4px;">
+            This is a message that can be shown/hidden
+        </div>
+        
+        <input type="text" id="focus-target" placeholder="This input can be focused programmatically" style="margin-top: 1rem;" />
+    </div>
+    
+    <!-- Load the library -->
+    <script type="module">
+        import { LiveView } from '../dist/shipwright-liveview.js'
+        
+        // Manual initialization example
+        let manualLiveView = null
+        
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            manualLiveView = new LiveView({
+                url: 'ws://localhost:3000/live',
+                container: '#manual-container',
+                token: 'manual-token',
+                onConnect: () => {
+                    updateStatus(true)
+                    document.getElementById('connect-btn').disabled = true
+                    document.getElementById('disconnect-btn').disabled = false
+                },
+                onDisconnect: () => {
+                    updateStatus(false)
+                    document.getElementById('connect-btn').disabled = false
+                    document.getElementById('disconnect-btn').disabled = true
+                },
+                onError: (error) => {
+                    console.error('LiveView error:', error)
+                }
+            })
+            
+            manualLiveView.connect()
+        })
+        
+        document.getElementById('disconnect-btn').addEventListener('click', () => {
+            if (manualLiveView) {
+                manualLiveView.disconnect()
+                manualLiveView = null
+            }
+        })
+        
+        function updateStatus(connected) {
+            const status = document.getElementById('status')
+            if (connected) {
+                status.textContent = 'Connected'
+                status.className = 'status connected'
+            } else {
+                status.textContent = 'Disconnected'
+                status.className = 'status disconnected'
+            }
+        }
+        
+        // Listen for auto-initialized LiveView
+        window.addEventListener('liveview:connect', () => {
+            updateStatus(true)
+        })
+        
+        window.addEventListener('liveview:disconnect', () => {
+            updateStatus(false)
+        })
+        
+        // Mock server responses for demo (in real app, these would come from server)
+        if (typeof WebSocket !== 'undefined') {
+            console.log('To see this example in action, run a compatible Axum LiveView server')
+            console.log('or modify this file to connect to your WebSocket endpoint')
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/serde_qs-ae6433717956c4d3.d: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/de/mod.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/de/parse.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/error.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/ser.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/utils.rs
+
+/Users/jaredreyes/Developer/shipwright/shipwright-liveview/target/debug/deps/libserde_qs-ae6433717956c4d3.rmeta: /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/lib.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/de/mod.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/de/parse.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/error.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/ser.rs /Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/utils.rs
+
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/lib.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/de/mod.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/de/parse.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/error.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/ser.rs:
+/Users/jaredreyes/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_qs-0.13.0/src/utils.rs:

@@ -1,0 +1,23 @@
+{
+  "name": "shipwright-liveview-hotreload-client",
+  "version": "0.1.0",
+  "description": "Client-side hot reload support for Shipwright LiveView",
+  "main": "hot-reload-client.js",
+  "types": "hot-reload-client.d.ts",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "shipwright",
+    "liveview",
+    "hot-reload",
+    "websocket"
+  ],
+  "author": "Shipwright Team",
+  "license": "MIT",
+  "files": [
+    "hot-reload-client.js",
+    "hot-reload-client.d.ts"
+  ]
+}
