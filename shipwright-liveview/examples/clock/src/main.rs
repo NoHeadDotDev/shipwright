@@ -1,4 +1,4 @@
-use axum::{response::IntoResponse, routing::get, Router};
+use axum::{http::header, response::IntoResponse, routing::get, Router};
 use shipwright_liveview::{
     event_data::EventData, html, live_view::Updated, Html, LiveView, LiveViewUpgrade,
 };
@@ -9,7 +9,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/bundle.js", shipwright_liveview::precompiled_js());
+        .route("/bundle.js", shipwright_liveview::precompiled_js())
+        .route("/hot-reload-client.js", get(serve_hot_reload_client));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
@@ -33,6 +34,18 @@ async fn root(live: LiveViewUpgrade) -> impl IntoResponse {
                 <body>
                     { embed.embed(view) }
                     <script src="/bundle.js"></script>
+                    if cfg!(debug_assertions) {
+                        <script src="/hot-reload-client.js"></script>
+                        <script>
+                            "if (typeof initHotReload !== 'undefined') {
+                                const client = initHotReload('ws://localhost:3001/ws', {
+                                    toastEnabled: true,
+                                    showIndicator: true,
+                                    enableDebugShortcuts: true
+                                });
+                            }"
+                        </script>
+                    }
                 </body>
             </html>
         }
@@ -75,4 +88,14 @@ impl LiveView for Clock {
             "Current time:" { now.format(&self.format).unwrap() }
         }
     }
+}
+
+async fn serve_hot_reload_client() -> impl IntoResponse {
+    let client_js =
+        include_str!("../../../shipwright-liveview-hotreload/client/hot-reload-client.js");
+
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        client_js,
+    )
 }

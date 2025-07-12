@@ -1,6 +1,6 @@
 use axum::{
     extract::Extension,
-    http::{HeaderMap, Uri},
+    http::{header, HeaderMap, Uri},
     response::IntoResponse,
     routing::get,
     Router,
@@ -27,6 +27,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(root))
         .route("/bundle.js", shipwright_liveview::precompiled_js())
+        .route("/hot-reload-client.js", get(serve_hot_reload_client))
         .layer(
             ServiceBuilder::new()
                 .layer(Extension(messages))
@@ -77,6 +78,18 @@ async fn root(
                 <body>
                     { embed.embed(combined) }
                     <script src="/bundle.js"></script>
+                    if cfg!(debug_assertions) {
+                        <script src="/hot-reload-client.js"></script>
+                        <script>
+                            "if (typeof initHotReload !== 'undefined') {
+                                const client = initHotReload('ws://localhost:3001/ws', {
+                                    toastEnabled: true,
+                                    showIndicator: true,
+                                    enableDebugShortcuts: true
+                                });
+                            }"
+                        </script>
+                    }
                 </body>
             </html>
         }
@@ -219,4 +232,14 @@ enum FormMsg {
 struct Message {
     name: String,
     message: String,
+}
+
+async fn serve_hot_reload_client() -> impl IntoResponse {
+    let client_js =
+        include_str!("../../../shipwright-liveview-hotreload/client/hot-reload-client.js");
+
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        client_js,
+    )
 }

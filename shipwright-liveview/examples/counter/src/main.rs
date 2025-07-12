@@ -8,28 +8,28 @@ use shipwright_liveview::{
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    // Start hot reload server in development
+    // Initialize hot reload system in development
     #[cfg(debug_assertions)]
     {
-        tokio::spawn(async {
-            let addr = "127.0.0.1:3001".parse().unwrap();
-            let watch_paths = vec![std::path::PathBuf::from("src")];
-            let hot_reload_server =
-                shipwright_liveview_hotreload::HotReloadServer::new(addr, watch_paths);
-            if let Err(e) = hot_reload_server.start().await {
-                eprintln!("Hot reload server failed to start: {}", e);
-            }
-        });
-        println!("🔥 Hot reload server started on ws://localhost:3001");
+        shipwright_liveview_hotreload::init_hot_reload();
+        println!("🔥 Enhanced hot reload system initialized!");
     }
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/bundle.js", shipwright_liveview::precompiled_js());
+        .route("/bundle.js", shipwright_liveview::precompiled_js())
+        .route("/hot-reload-client.js", get(hot_reload_client_js));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("🚀 Server listening on {}", listener.local_addr().unwrap());
+    println!("📝 Use 'shipwright dev' for enhanced hot reload!");
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn hot_reload_client_js() -> impl IntoResponse {
+    // Serve the enhanced hot reload client
+    let client_js = include_str!("../../../shipwright-liveview-hotreload/client/hot-reload-client.js");
+    ([("content-type", "application/javascript")], client_js)
 }
 
 async fn root(live: LiveViewUpgrade) -> impl IntoResponse {
@@ -40,73 +40,48 @@ async fn root(live: LiveViewUpgrade) -> impl IntoResponse {
             <!DOCTYPE html>
             <html>
                 <head>
-                    <title>"Counter Example - Shipwright LiveView"</title>
+                    <title>"🚀 Enhanced Counter - Shipwright LiveView"</title>
+                    <meta charset="utf-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1" />
+                    <style>
+                        "body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }"
+                        ".container { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }"
+                        ".card { background: white; border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; max-width: 500px; }"
+                        ".title { color: #4a5568; margin-bottom: 30px; font-size: 2.5rem; font-weight: 700; }"
+                        ".counter-display { font-size: 4rem; font-weight: 800; color: #2d3748; margin: 30px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }"
+                        ".button-group { display: flex; gap: 20px; justify-content: center; margin: 30px 0; }"
+                        ".btn { padding: 15px 30px; font-size: 1.5rem; font-weight: 600; border: none; border-radius: 12px; cursor: pointer; transition: all 0.3s ease; color: white; }"
+                        ".btn:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }"
+                        ".btn-decr { background: linear-gradient(135deg, #ff6b6b, #ee5a52); }"
+                        ".btn-incr { background: linear-gradient(135deg, #51cf66, #40c057); }"
+                        ".description { color: #718096; font-size: 1.1rem; line-height: 1.6; margin-top: 30px; }"
+                        ".hot-reload-info { background: #f7fafc; border-left: 4px solid #4299e1; padding: 15px; margin-top: 20px; border-radius: 8px; }"
+                        ".emoji { font-size: 1.5em; }"
+                    </style>
                 </head>
                 <body>
-                    { embed.embed(view) }
+                    <div class="container">
+                        { embed.embed(view) }
+                    </div>
+                    
                     <script src="/bundle.js"></script>
+                    
                     if cfg!(debug_assertions) {
+                        <script src="/hot-reload-client.js"></script>
                         <script>
-                            "// Hot Reload Client with Throttling
-                            (function() {
-                                const ws = new WebSocket('ws://localhost:3001/ws');
-                                let lastReloadTime = 0;
-                                const RELOAD_THROTTLE_MS = 2000; // 2 seconds
-                                
-                                function throttledReload() {
-                                    const now = Date.now();
-                                    if (now - lastReloadTime < RELOAD_THROTTLE_MS) {
-                                        console.log('🔥 Hot reload: Throttled - ignoring rapid reload request');
-                                        return;
-                                    }
-                                    
-                                    lastReloadTime = now;
-                                    console.log('🔥 Hot reload: Template updated - waiting for compilation...');
-                                    
-                                    // Close WebSocket before reload to prevent reconnection issues
-                                    ws.close();
-                                    
-                                    // Show loading indicator
-                                    document.body.style.opacity = '0.7';
-                                    document.body.style.pointerEvents = 'none';
-                                    
-                                    // Wait for compilation by polling the server
-                                    const checkCompilation = () => {
-                                        fetch('/')
-                                            .then(response => {
-                                                if (response.ok) {
-                                                    console.log('🔥 Compilation complete - reloading');
-                                                    location.reload();
-                                                } else {
-                                                    // Still compiling, check again
-                                                    setTimeout(checkCompilation, 200);
-                                                }
-                                            })
-                                            .catch(() => {
-                                                // Server not ready, check again
-                                                setTimeout(checkCompilation, 200);
-                                            });
-                                    };
-                                    
-                                    // Start checking after initial delay
-                                    setTimeout(checkCompilation, 500);
-                                }
-                                
-                                ws.onmessage = function(event) {
-                                    const msg = JSON.parse(event.data);
-                                    console.log('🔍 Received message:', msg);
-                                    if (msg.type === 'template_updated' || msg.type === 'batch_update') {
-                                        throttledReload();
-                                    }
-                                };
-                                ws.onopen = function() {
-                                    console.log('🔥 Hot reload connected');
-                                };
-                                ws.onclose = function() {
-                                    console.log('🔥 Hot reload disconnected');
-                                    setTimeout(() => location.reload(), 1000);
-                                };
-                            })();"
+                            "// Initialize enhanced hot reload client
+                            if (typeof initHotReload !== 'undefined') {
+                                const client = initHotReload('ws://localhost:3001/ws', {
+                                    toastEnabled: true,
+                                    showIndicator: true,
+                                    enableDebugShortcuts: true
+                                });
+                                console.log('🔥 Enhanced hot reload client initialized!');
+                                console.log('📝 Try editing the template and save to see instant updates!');
+                                console.log('⌨️  Debug shortcuts: Ctrl+Shift+R (reconnect), Ctrl+Shift+H (stats), Ctrl+Shift+T (toggle toasts)');
+                            } else {
+                                console.warn('Hot reload client not available');
+                            }"
                         </script>
                     }
                 </body>
@@ -138,24 +113,44 @@ impl LiveView for Counter {
 
     fn render(&self) -> Html<Self::Message> {
         html! {
-            <div style="border: 1px dashed green; padding: 20px; font-family: Arial, sans-serif;">
-                <h1>"🚀 Shipwright LiveView Counter"</h1>
-                <div style="margin: 20px 0;">
+            <div class="card">
+                <h1 class="title">
+                    <span class="emoji">"🚀"</span>
+                    " Shipwright LiveView "
+                    <span class="emoji">"🔥"</span>
+                </h1>
+                <div class="counter-display">
+                    { self.count }
+                </div>
+                <div class="button-group">
                     <button
                         axm-click={ Msg::Decr }
-                        style="padding: 10px 20px; margin: 5px; background: #ff6b6b; color: white; border: none; border-radius: 5px; cursor: pointer;"
-                    >"-"</button>
-                    <span style="margin: 0 20px; font-size: 24px; font-weight: bold;">
-                        { self.count }
-                    </span>
+                        class="btn btn-decr"
+                    >
+                        <span class="emoji">"➖"</span>
+                        " Decrement"
+                    </button>
                     <button
                         axm-click={ Msg::Incr }
-                        style="padding: 10px 20px; margin: 5px; background: #51cf66; color: white; border: none; border-radius: 5px; cursor: pointer;"
-                    >"+"</button>
+                        class="btn btn-incr"
+                    >
+                        <span class="emoji">"➕"</span>
+                        " Increment"
+                    </button>
                 </div>
-                <p class="[ stack ]">
-                    "🔥 Try editing this shart the server is running!!!!"
-                </p>
+                <div class="description">
+                    <p>"🎯 This is a "<strong>"reactive counter"</strong>" built with Shipwright LiveView!"</p>
+                    <p>"✨ Click the buttons to see instant state updates."</p>
+                </div>
+                <div class="hot-reload-info">
+                    <p>
+                        <strong>"🔥 Enhanced Hot Reload Active"</strong>
+                    </p>
+                    <p>"Try editing this template and saving - you'll see instant updates with state preservation!"</p>
+                    <p>
+                        <small>"💡 Features: DOM patching • Toast notifications • State preservation • Connection resilience"</small>
+                    </p>
+                </div>
             </div>
         }
     }

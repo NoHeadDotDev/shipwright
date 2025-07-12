@@ -1,8 +1,8 @@
-use axum::{response::IntoResponse, routing::get, Router};
+use axum::{http::header, response::IntoResponse, routing::get, Router};
+use serde::{Deserialize, Serialize};
 use shipwright_liveview::{
     event_data::EventData, html, live_view::Updated, Html, LiveView, LiveViewUpgrade,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[tokio::main]
@@ -11,11 +11,10 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/bundle.js", shipwright_liveview::precompiled_js());
+        .route("/bundle.js", shipwright_liveview::precompiled_js())
+        .route("/hot-reload-client.js", get(serve_hot_reload_client));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
@@ -32,6 +31,18 @@ async fn root(live: LiveViewUpgrade) -> impl IntoResponse {
                 <body>
                     { embed.embed(view) }
                     <script src="/bundle.js"></script>
+                    if cfg!(debug_assertions) {
+                        <script src="/hot-reload-client.js"></script>
+                        <script>
+                            "if (typeof initHotReload !== 'undefined') {
+                                const client = initHotReload('ws://localhost:3001/ws', {
+                                    toastEnabled: true,
+                                    showIndicator: true,
+                                    enableDebugShortcuts: true
+                                });
+                            }"
+                        </script>
+                    }
                 </body>
             </html>
         }
@@ -105,7 +116,7 @@ impl LiveView for FormView {
                 axm-submit={ Msg::Submit }
             >
                 <label>
-                    <div>"Text input"</div>
+                    <div>"Text input!"</div>
                     <input type="text" name="input" axm-focus={ Msg::Focus } axm-blur={ Msg::Blur } axm-input={ Msg::TextInputChanged } axm-debounce="1000" />
                     if !self.text_input_value.is_empty() {
                         <div>
@@ -118,12 +129,12 @@ impl LiveView for FormView {
                     <div>"Textarea"</div>
                     <textarea name="textarea" axm-focus={ Msg::Focus } axm-blur={ Msg::Blur } axm-input={ Msg::TextAreaChanged }></textarea>
                     <div>
-                        "Chars remaining: " { TEXTAREA_MAX_LEN - self.textarea_value.len() as i32 }
+                        "Chars remainingssssss: " { TEXTAREA_MAX_LEN - self.textarea_value.len() as i32 }
                     </div>
                 </label>
 
                 <label>
-                    <div>"Select"</div>
+                    <div>"Selectssss"</div>
                     <select name="number" axm-focus={ Msg::Focus } axm-blur={ Msg::Blur } axm-change={ Msg::Changed(Input::Select) }>
                         for n in 0..5 {
                             <option value={ n }>{ n }</option>
@@ -132,7 +143,7 @@ impl LiveView for FormView {
                 </label>
 
                 <label>
-                    <div>"Multi select"</div>
+                    <div>"Multi selectdnf"</div>
                     <select name="numbers[]" size="6" multiple axm-focus={ Msg::Focus } axm-blur={ Msg::Blur } axm-change={ Msg::Changed(Input::MultiSelect) }>
                         for n in 0..5 {
                             <option value={ n }>{ n }</option>
@@ -141,7 +152,7 @@ impl LiveView for FormView {
                 </label>
 
                 <div>
-                    <div>"Radio buttons"</div>
+                    <div>"Radio buttons are cool"</div>
                     for n in 0..5 {
                         <div>
                             <label>
@@ -290,3 +301,13 @@ struct FormValues {
 }
 
 const TEXTAREA_MAX_LEN: i32 = 10;
+
+async fn serve_hot_reload_client() -> impl IntoResponse {
+    let client_js =
+        include_str!("../../../shipwright-liveview-hotreload/client/hot-reload-client.js");
+
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        client_js,
+    )
+}
