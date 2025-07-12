@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use tracing::{info, warn, error};
 use tokio::signal;
 use std::process::Stdio;
+use tokio::io::AsyncBufReadExt;
 
 use crate::{config::Config, error::ShipwrightError};
 use super::CommandContext;
@@ -90,6 +91,13 @@ impl DevCommand {
         // Start the application server (not a static server)
         let server_handle = self.start_application(&ctx).await?;
         
+        // Start hot reload server if enabled
+        let hotreload_handle = if hot_reload_enabled {
+            Some(self.start_hot_reload_server(&ctx).await?)
+        } else {
+            None
+        };
+        
         // Start hot reload watcher if enabled
         let _watcher_handle = if hot_reload_enabled {
             Some(self.start_hot_reload_watcher(&ctx).await?)
@@ -119,6 +127,9 @@ impl DevCommand {
         
         // Cleanup
         server_handle.abort();
+        if let Some(handle) = hotreload_handle {
+            handle.abort();
+        }
         info!("Development server stopped");
         
         Ok(())
@@ -251,6 +262,172 @@ impl DevCommand {
         });
         
         Ok(watcher_handle)
+    }
+    
+    async fn start_hot_reload_server(&self, ctx: &CommandContext) -> Result<tokio::task::JoinHandle<()>, ShipwrightError> {
+        info!("Starting hot reload server...");
+        
+        // Determine the path to the hot reload server binary
+        // First try the relative path from workspace root
+        let mut hotreload_dir = ctx.workspace.root
+            .parent()
+            .ok_or_else(|| ShipwrightError::BuildError("Could not find parent directory".to_string()))?
+            .join("shipwright-liveview/shipwright-liveview-hotreload");
+        
+        // If that doesn't exist, try looking for it in the current workspace root 
+        if !hotreload_dir.exists() {
+            hotreload_dir = ctx.workspace.root.join("shipwright-liveview-hotreload");
+        }
+        
+        // If still not found, try going up multiple levels to find shipwright-liveview
+        if !hotreload_dir.exists() {
+            let mut current = ctx.workspace.root.clone();
+            while let Some(parent) = current.parent() {
+                let candidate = parent.join("shipwright-liveview/shipwright-liveview-hotreload");
+                if candidate.exists() {
+                    hotreload_dir = candidate;
+                    break;
+                }
+                current = parent.to_path_buf();
+            }
+        }
+        
+        if !hotreload_dir.exists() {
+            return Err(ShipwrightError::BuildError(
+                format!("Hot reload server directory not found: {}", hotreload_dir.display())
+            ));
+        }
+        
+        // Start the hot reload server
+        info!("Hot reload server directory: {}", hotreload_dir.display());
+        info!("Watch path: {}", ctx.workspace.root.display());
+        
+        let mut cmd = tokio::process::Command::new("cargo");
+        cmd.arg("run")
+           .arg("--bin")
+           .arg("shipwright-hotreload")
+           .arg("--")
+           .arg("--port")
+           .arg("3001")
+           .arg("--host")
+           .arg("127.0.0.1")
+           .arg("--watch")
+           .arg(&ctx.workspace.root)
+           .current_dir(&hotreload_dir)
+           .env("RUST_LOG", "debug")
+           .stdout(Stdio::piped())
+           .stderr(Stdio::piped())
+           .kill_on_drop(true);
+        
+        // Log the exact command being executed
+        info!("Executing: cargo run --bin shipwright-hotreload -- --port 3001 --host 127.0.0.1 --watch {}", ctx.workspace.root.display());
+        info!("Working directory: {}", hotreload_dir.display());
+        
+        let mut hotreload_process = cmd.spawn()
+            .map_err(|e| ShipwrightError::BuildError(format!("Failed to start hot reload server: {}", e)))?;
+        
+        // Capture stdout and stderr for monitoring
+        let stdout = hotreload_process.stdout.take().expect("Failed to capture stdout");
+        let stderr = hotreload_process.stderr.take().expect("Failed to capture stderr");
+        
+        // Monitor stdout
+        let stdout_handle = tokio::spawn(async move {
+            let mut reader = tokio::io::BufReader::new(stdout);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match tokio::io::AsyncBufReadExt::read_line(&mut reader, &mut line).await {
+                    Ok(0) => break, // EOF
+                    Ok(_) => {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            info!("[HotReload] {}", trimmed);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading hot reload stdout: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+        
+        // Monitor stderr
+        let stderr_handle = tokio::spawn(async move {
+            let mut reader = tokio::io::BufReader::new(stderr);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match tokio::io::AsyncBufReadExt::read_line(&mut reader, &mut line).await {
+                    Ok(0) => break, // EOF
+                    Ok(_) => {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            error!("[HotReload Error] {}", trimmed);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading hot reload stderr: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+        
+        let hotreload_handle = tokio::spawn(async move {
+            match hotreload_process.wait().await {
+                Ok(status) => {
+                    if !status.success() {
+                        error!("🔥 Hot reload server process exited with code: {}", status.code().unwrap_or(-1));
+                        error!("🔥 This indicates the hot reload server failed to start properly");
+                    } else {
+                        info!("🔥 Hot reload server process completed successfully");
+                    }
+                }
+                Err(e) => {
+                    error!("🔥 Failed to wait for hot reload server process: {}", e);
+                }
+            }
+            
+            // Wait for output handlers to complete
+            let _ = tokio::join!(stdout_handle, stderr_handle);
+        });
+        
+        // Give the hot reload server time to start
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        
+        // Health check: verify the server is actually listening
+        let health_check_result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(2),
+            async {
+                for attempt in 1..=5 {
+                    match tokio::net::TcpStream::connect("127.0.0.1:3001").await {
+                        Ok(_) => {
+                            info!("✅ Hot reload server health check passed (attempt {})", attempt);
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            warn!("❌ Hot reload server health check failed (attempt {}): {}", attempt, e);
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        }
+                    }
+                }
+                Err("Hot reload server is not responding on port 3001")
+            }
+        ).await;
+        
+        match health_check_result {
+            Ok(Ok(())) => {
+                info!("🔥 Hot reload server confirmed listening on http://127.0.0.1:3001");
+            }
+            Ok(Err(_)) | Err(_) => {
+                error!("🔥 Hot reload server health check failed");
+                error!("🔥 The hot reload server process started but is not accepting connections");
+                error!("🔥 Check the hot reload server logs above for errors");
+            }
+        }
+        
+        Ok(hotreload_handle)
     }
 }
 
