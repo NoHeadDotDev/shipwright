@@ -136,3 +136,82 @@ impl HotReloadMessage {
         serde_json::from_str(json)
     }
 }
+
+/// Enhanced protocol types for change analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeAnalysis {
+    /// Type of change detected
+    pub change_type: ChangeType,
+    /// Number of templates in the file
+    pub template_count: usize,
+    /// Whether templates were added or removed
+    pub templates_added_or_removed: bool,
+    /// Affected line ranges
+    pub affected_ranges: Vec<LineRange>,
+    /// Confidence in the analysis (0.0 to 1.0)
+    pub confidence: f32,
+    /// Additional metadata
+    pub metadata: Option<ChangeMetadata>,
+}
+
+/// Type of change detected
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeType {
+    /// Only template content changed
+    TemplateOnly,
+    /// Code structure changed
+    CodeStructure,
+    /// Mixed changes
+    Mixed,
+    /// Asset files changed
+    Assets,
+    /// Unknown change type
+    Unknown,
+}
+
+/// Line range in a file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+/// Additional metadata about changes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeMetadata {
+    /// Types of macros found
+    pub macro_types: Vec<String>,
+    /// Whether this is a new file
+    pub is_new_file: bool,
+    /// Complexity of the change
+    pub complexity: ChangeComplexity,
+}
+
+/// Complexity of a change
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeComplexity {
+    /// Simple change (e.g., text only)
+    Simple,
+    /// Moderate change (e.g., attributes)
+    Moderate,
+    /// Complex change (e.g., structure)
+    Complex,
+}
+
+/// Content type classification
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentType {
+    /// Rust source code
+    Rust,
+    /// CSS/SCSS files
+    Style,
+    /// JavaScript/TypeScript
+    Script,
+    /// HTML templates
+    Html,
+    /// Other asset types
+    Asset,
+}

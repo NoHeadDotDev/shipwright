@@ -10,6 +10,16 @@ pub mod server;
 pub mod watcher;
 pub mod template_cache;
 pub mod runtime;
+pub mod template_diff;
+pub mod diff_integration;
+
+// Enhanced runtime integration modules
+pub mod dom_diff;
+pub mod liveview_integration;
+pub mod integration;
+pub mod error_recovery;
+pub mod logging;
+pub mod state_serialization;
 
 pub use protocol::{HotReloadMessage, TemplateUpdate, TemplateId};
 pub use server::HotReloadServer;

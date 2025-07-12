@@ -1,10 +1,103 @@
 //! Runtime integration for hot reload system
 
 use once_cell::sync::OnceCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::protocol::TemplateId;
+
+/// Hot reload error types
+#[derive(Debug, Error, Clone)]
+pub enum HotReloadError {
+    #[error("DOM diffing failed: {reason}")]
+    DomDiffingFailed { reason: String },
+    
+    #[error("State preservation failed: {reason}")]
+    StatePreservationFailed { reason: String },
+    
+    #[error("Template update failed: {reason}")]
+    TemplateUpdateFailed { reason: String },
+    
+    #[error("Parse error: {0}")]
+    ParseError(String),
+    
+    #[error("IO error: {0}")]
+    IoError(String),
+    
+    #[error("Component not found: {0}")]
+    ComponentNotFound(String),
+    
+    #[error("Invalid state: {0}")]
+    InvalidState(String),
+}
+
+/// A patch operation for hot reload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HotReloadPatchOp {
+    /// Replace an element
+    Replace {
+        selector: String,
+        html: String,
+    },
+    /// Update text content
+    UpdateText {
+        selector: String,
+        text: String,
+    },
+    /// Set an attribute
+    SetAttribute {
+        selector: String,
+        name: String,
+        value: String,
+    },
+    /// Remove an attribute
+    RemoveAttribute {
+        selector: String,
+        name: String,
+    },
+    /// Insert a child element
+    InsertChild {
+        parent_selector: String,
+        index: usize,
+        html: String,
+    },
+    /// Remove a child element
+    RemoveChild {
+        parent_selector: String,
+        index: usize,
+    },
+    /// Move a child element
+    MoveChild {
+        parent_selector: String,
+        from_index: usize,
+        to_index: usize,
+    },
+}
+
+/// A collection of patch operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HotReloadPatch {
+    pub operations: Vec<HotReloadPatchOp>,
+}
+
+/// Represents a component instance
+#[derive(Debug, Clone)]
+pub struct ComponentInstance {
+    pub id: String,
+    pub component_type: String,
+    pub template_id: TemplateId,
+    pub state: ComponentState,
+}
+
+/// Component state that can be preserved during hot reload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentState {
+    pub data: serde_json::Value,
+    pub metadata: HashMap<String, String>,
+}
 
 /// Global template registry
 static TEMPLATE_REGISTRY: OnceCell<Arc<RwLock<TemplateRegistry>>> = OnceCell::new();

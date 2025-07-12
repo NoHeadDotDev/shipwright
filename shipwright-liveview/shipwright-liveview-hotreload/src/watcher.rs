@@ -15,6 +15,7 @@ use crate::{
     parser::TemplateParser,
     protocol::TemplateUpdate,
     template_cache::TemplateCache,
+    diff_integration::{DiffAwareTemplateCache, analysis_to_messages, EnhancedHotReloadMessage},
 };
 
 /// File change event
