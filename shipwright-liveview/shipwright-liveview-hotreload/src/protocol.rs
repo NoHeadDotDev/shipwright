@@ -80,7 +80,7 @@ pub struct DynamicPart {
 }
 
 /// Type of dynamic content in a template
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DynamicKind {
     /// Simple expression interpolation
@@ -114,15 +114,78 @@ pub enum HotReloadMessage {
         /// Template ID to reload
         template_id: TemplateId,
     },
+    /// Asset file updated (CSS, JS, etc.)
+    AssetUpdated {
+        /// Type of asset
+        asset_type: String,
+        /// Path to the asset
+        path: String,
+    },
+    /// Full page reload requested
+    FullReload {
+        /// Reason for full reload
+        reason: String,
+    },
+    /// Server status update
+    ServerStatus {
+        /// Server status
+        status: ServerStatusType,
+        /// Additional message
+        message: Option<String>,
+        /// Statistics
+        stats: Option<ServerStats>,
+    },
+    /// File change detected (for debugging)
+    FileChangeDetected {
+        /// Path that changed
+        path: String,
+        /// Type of change
+        change_type: String,
+        /// Number of templates affected
+        templates_affected: usize,
+    },
     /// Error occurred
     Error {
         /// Error message
         message: String,
+        /// Error code
+        code: Option<String>,
+        /// Suggested actions
+        suggestions: Option<Vec<String>>,
     },
     /// Heartbeat to keep connection alive
     Ping,
     /// Response to ping
     Pong,
+}
+
+/// Server status types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerStatusType {
+    /// Server starting up
+    Starting,
+    /// Server running normally
+    Running,
+    /// Server experiencing issues
+    Warning,
+    /// Server shutting down
+    Shutdown,
+}
+
+/// Server statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerStats {
+    /// Number of connected clients
+    pub connected_clients: usize,
+    /// Number of cached templates
+    pub cached_templates: usize,
+    /// Number of files being watched
+    pub watched_files: usize,
+    /// Uptime in seconds
+    pub uptime_seconds: u64,
+    /// Number of updates sent
+    pub updates_sent: u64,
 }
 
 impl HotReloadMessage {

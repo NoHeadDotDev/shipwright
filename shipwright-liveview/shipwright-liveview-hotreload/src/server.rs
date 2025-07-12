@@ -24,7 +24,7 @@ use tower_http::cors::CorsLayer;
 use tracing::{debug, error, info};
 
 use crate::{
-    protocol::HotReloadMessage,
+    protocol::{HotReloadMessage, ServerStats, ServerStatusType},
     template_cache::TemplateCache,
     watcher::FileWatcher,
 };
@@ -38,6 +38,10 @@ struct ServerState {
     broadcast_tx: broadcast::Sender<HotReloadMessage>,
     /// Number of connected clients
     client_count: Arc<RwLock<usize>>,
+    /// Number of updates sent
+    updates_sent: Arc<RwLock<u64>>,
+    /// Server start time
+    start_time: std::time::Instant,
 }
 
 /// Hot reload server
@@ -72,6 +76,8 @@ impl HotReloadServer {
             cache: self.cache.clone(),
             broadcast_tx: broadcast_tx.clone(),
             client_count: Arc::new(RwLock::new(0)),
+            updates_sent: Arc::new(RwLock::new(0)),
+            start_time: std::time::Instant::now(),
         };
 
         // Create channel for file watcher updates
@@ -92,13 +98,26 @@ impl HotReloadServer {
 
         // Process updates from file watcher
         let broadcast_tx_clone = broadcast_tx.clone();
+        let updates_sent_clone = state.updates_sent.clone();
+        let client_count_clone = state.client_count.clone();
         tokio::spawn(async move {
             while let Some(updates) = update_rx.recv().await {
-                println!("🔥 Broadcasting {} template updates to clients", updates.len());
+                let client_count = *client_count_clone.read().await;
+                info!("🔥 Broadcasting {} template updates to {} connected clients", updates.len(), client_count);
+                
                 for update in updates {
+                    info!("📤 Sending template update: {:?} -> {}", update.id, update.hash);
                     let message = HotReloadMessage::TemplateUpdated(update);
-                    if let Err(e) = broadcast_tx_clone.send(message) {
-                        debug!("Failed to broadcast update: {}", e);
+                    
+                    match broadcast_tx_clone.send(message) {
+                        Ok(receiver_count) => {
+                            info!("✅ Template update broadcasted to {} receivers", receiver_count);
+                            let mut sent_count = updates_sent_clone.write().await;
+                            *sent_count += 1;
+                        }
+                        Err(e) => {
+                            error!("❌ Failed to broadcast template update: {}", e);
+                        }
                     }
                 }
             }
@@ -251,6 +270,8 @@ async fn handle_client_message(
             } else {
                 let error = HotReloadMessage::Error {
                     message: "Template not found in cache".to_string(),
+                    code: Some("TEMPLATE_NOT_FOUND".to_string()),
+                    suggestions: Some(vec!["Try saving the file again".to_string()]),
                 };
                 if let Ok(json) = error.to_json() {
                     let _ = sender.send(Message::Text(json)).await;
@@ -277,11 +298,24 @@ async fn health_check() -> impl IntoResponse {
 /// Stats endpoint
 async fn stats_handler(State(state): State<ServerState>) -> impl IntoResponse {
     let client_count = *state.client_count.read().await;
+    let updates_sent = *state.updates_sent.read().await;
     let cache_stats = state.cache.stats();
+    let uptime = state.start_time.elapsed().as_secs();
+    
+    let stats = ServerStats {
+        connected_clients: client_count,
+        cached_templates: cache_stats.total_entries,
+        watched_files: 0, // TODO: Get from file watcher
+        uptime_seconds: uptime,
+        updates_sent,
+    };
     
     serde_json::json!({
-        "connected_clients": client_count,
-        "cached_templates": cache_stats.total_entries,
+        "connected_clients": stats.connected_clients,
+        "cached_templates": stats.cached_templates,
+        "watched_files": stats.watched_files,
+        "uptime_seconds": stats.uptime_seconds,
+        "updates_sent": stats.updates_sent,
         "cache_oldest": cache_stats.oldest_entry.map(|t| t.elapsed().as_secs()),
         "cache_newest": cache_stats.newest_entry.map(|t| t.elapsed().as_secs()),
     })

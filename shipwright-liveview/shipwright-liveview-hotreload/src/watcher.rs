@@ -173,7 +173,7 @@ impl FileWatcher {
         last_processed.insert(path.clone(), now);
         drop(last_processed);
 
-        println!("🔥 Processing file change: {}", path.display());
+        info!("🔥 Processing file change: {}", path.display());
 
         match event.kind {
             notify_debouncer_mini::DebouncedEventKind::Any => {
@@ -206,10 +206,16 @@ impl FileWatcher {
                     }
                     
                     if !changed_updates.is_empty() {
-                        println!("🔥 Found {} template content changes, broadcasting...", changed_updates.len());
-                        let _ = self.tx.send(changed_updates).await;
+                        info!("🔥 Found {} template content changes, broadcasting...", changed_updates.len());
+                        for update in &changed_updates {
+                            info!("  📝 Template changed: {:?} (hash: {})", update.id, update.hash);
+                        }
+                        match self.tx.send(changed_updates).await {
+                            Ok(()) => info!("✅ Successfully queued template updates for broadcast"),
+                            Err(e) => error!("❌ Failed to queue template updates: {}", e),
+                        }
                     } else {
-                        println!("⚡ File changed but template content is identical, skipping broadcast");
+                        info!("⚡ File changed but template content is identical, skipping broadcast");
                     }
                 }
             }

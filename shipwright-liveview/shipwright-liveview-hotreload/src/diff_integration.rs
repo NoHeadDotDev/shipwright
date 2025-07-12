@@ -189,6 +189,8 @@ pub fn analysis_to_messages(analysis: HotReloadAnalysis) -> Vec<EnhancedHotReloa
         messages.push(EnhancedHotReloadMessage::Standard(
             HotReloadMessage::Error {
                 message: error_messages.join("\n"),
+                code: Some("DIFF_APPLICATION_FAILED".to_string()),
+                suggestions: None,
             },
         ));
     }
@@ -206,9 +208,13 @@ pub struct DiffAwareTemplateCache {
 
 impl DiffAwareTemplateCache {
     /// Create a new diff-aware cache
-    pub fn new(max_size: usize) -> Self {
+    pub fn new(max_size_bytes: usize) -> Self {
         Self {
-            cache: TemplateCache::new(max_size),
+            cache: TemplateCache::with_config(
+                std::time::Duration::from_secs(3600), // 1 hour default
+                max_size_bytes,
+                10000, // 10k entries default
+            ),
             decision_maker: HotReloadDecisionMaker::new(),
         }
     }
@@ -227,7 +233,7 @@ impl DiffAwareTemplateCache {
     }
 
     /// Get a template from cache
-    pub fn get(&self, id: &TemplateId) -> Option<&TemplateUpdate> {
+    pub fn get(&self, id: &TemplateId) -> Option<TemplateUpdate> {
         self.cache.get(id)
     }
 
@@ -238,7 +244,7 @@ impl DiffAwareTemplateCache {
     }
 
     /// Get cache statistics
-    pub fn stats(&self) -> (crate::template_cache::CacheStats, DecisionMakerStats) {
+    pub fn stats(&self) -> (crate::template_cache::CacheStatistics, DecisionMakerStats) {
         (self.cache.stats(), self.decision_maker.get_stats())
     }
 }

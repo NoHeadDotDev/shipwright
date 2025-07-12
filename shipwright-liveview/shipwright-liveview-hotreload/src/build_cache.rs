@@ -278,7 +278,7 @@ impl BuildCache {
     }
 
     /// Check if a file has been modified since a given time
-    fn is_file_modified(&self, path: &Path, since: Instant) -> bool {
+    fn is_file_modified(&self, _path: &Path, _since: Instant) -> bool {
         // In a real implementation, this would check file system metadata
         // For now, we'll return false (can be implemented with std::fs::metadata)
         false

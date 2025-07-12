@@ -234,6 +234,12 @@ pub struct CacheStatistics {
     pub current_size_bytes: usize,
     /// Peak cache size in bytes
     pub peak_size_bytes: usize,
+    /// Total number of entries in the cache
+    pub total_entries: usize,
+    /// Timestamp of the oldest entry
+    pub oldest_entry: Option<Instant>,
+    /// Timestamp of the newest entry
+    pub newest_entry: Option<Instant>,
 }
 
 impl TemplateCache {
@@ -542,7 +548,29 @@ impl TemplateCache {
 
     /// Get cache statistics
     pub fn stats(&self) -> CacheStatistics {
-        self.stats.lock().unwrap().clone()
+        let mut stats = self.stats.lock().unwrap().clone();
+        
+        // Update dynamic fields
+        stats.total_entries = self.cache.len();
+        
+        // Find oldest and newest entries
+        let mut oldest: Option<Instant> = None;
+        let mut newest: Option<Instant> = None;
+        
+        for entry in self.cache.iter() {
+            let created_at = entry.created_at;
+            if oldest.is_none() || created_at < oldest.unwrap() {
+                oldest = Some(created_at);
+            }
+            if newest.is_none() || created_at > newest.unwrap() {
+                newest = Some(created_at);
+            }
+        }
+        
+        stats.oldest_entry = oldest;
+        stats.newest_entry = newest;
+        
+        stats
     }
 
     /// Get detailed cache metrics

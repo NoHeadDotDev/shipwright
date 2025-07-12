@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 
 use crate::protocol::{DynamicKind, DynamicPart, TemplateId, TemplateUpdate};
 
@@ -231,7 +231,7 @@ impl TemplateDiffer {
     }
 
     /// Simple HTML parsing (placeholder for full parser)
-    fn parse_simple_html(&self, html: &str, dynamic_parts: &[DynamicPart]) -> Result<TemplateNode> {
+    fn parse_simple_html(&self, html: &str, _dynamic_parts: &[DynamicPart]) -> Result<TemplateNode> {
         // This is a simplified parser - in production, use html5ever or similar
         // For now, treat the entire content as a text node with dynamic parts
         Ok(TemplateNode::Text(html.to_string()))
@@ -401,7 +401,7 @@ impl TemplateDiffer {
         &self,
         old_children: &[TemplateNode],
         new_children: &[TemplateNode],
-        mut parent_path: Vec<usize>,
+        parent_path: Vec<usize>,
         changes: &mut Vec<TemplateChange>,
         compatibility_issues: &mut Vec<CompatibilityIssue>,
         delta_ops: &mut Vec<DeltaOperation>,
@@ -562,10 +562,10 @@ impl BatchOperationBuilder {
     /// Build optimized batch operations
     pub fn build(self) -> Vec<DeltaOperation> {
         // Optimize operations (e.g., merge adjacent text updates)
-        self.optimize_operations(self.operations)
+        Self::optimize_operations(self.operations)
     }
 
-    fn optimize_operations(&self, ops: Vec<DeltaOperation>) -> Vec<DeltaOperation> {
+    fn optimize_operations(ops: Vec<DeltaOperation>) -> Vec<DeltaOperation> {
         // Simple optimization: deduplicate operations on same path
         let mut optimized = Vec::new();
         let mut seen_paths = HashSet::new();
