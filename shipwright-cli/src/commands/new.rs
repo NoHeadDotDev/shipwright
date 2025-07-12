@@ -63,8 +63,8 @@ impl NewCommand {
         let mut cmd = Command::new("cargo");
         cmd.arg("generate");
         
-        // Determine template source
-        let template_path = if self.template.starts_with("http") || self.template.starts_with("git@") {
+        // Determine template source - prioritize remote templates for standalone CLI usage
+        if self.template.starts_with("http") || self.template.starts_with("git@") {
             // Direct git URL - use as-is for cargo generate
             return self.run_cargo_generate_with_git(&self.template).await;
         } else if self.template.contains('/') && !std::path::Path::new(&self.template).exists() {
@@ -72,103 +72,68 @@ impl NewCommand {
             let git_url = format!("https://github.com/{}", self.template);
             return self.run_cargo_generate_with_git(&git_url).await;
         } else {
-            // Local path or predefined template
+            // Check for predefined templates - try local first, then remote fallback
             match self.template.as_str() {
                 "default" => {
-                    // Use the default Shipwright template from local templates directory
-                    self.find_shipwright_root()?
-                        .join("templates")
-                        .join("shipwright-default-template")
+                    // Try local template first for development
+                    if let Ok(templates_path) = self.try_find_local_template("shipwright-default-template") {
+                        let mut cmd = Command::new("cargo");
+                        cmd.arg("generate");
+                        cmd.arg("--path").arg(&templates_path);
+                        cmd.arg("--name").arg(&self.name);
+                        return self.run_cargo_generate_command(cmd).await;
+                    } else {
+                        // For now, until we publish templates to GitHub, show a helpful message
+                        return Err(ShipwrightError::IoError(
+                            "Default template not found. Please run 'shipwright new' from within the shipwright project directory, or specify a git URL.".to_string()
+                        ));
+                    }
                 },
                 "shipwright" => {
-                    // Use the full shipwright template
-                    self.find_shipwright_root()?
-                        .join("templates")
-                        .join("shipwright")
+                    // Try local template first for development
+                    if let Ok(templates_path) = self.try_find_local_template("shipwright") {
+                        let mut cmd = Command::new("cargo");
+                        cmd.arg("generate");
+                        cmd.arg("--path").arg(&templates_path);
+                        cmd.arg("--name").arg(&self.name);
+                        return self.run_cargo_generate_command(cmd).await;
+                    } else {
+                        // For now, until we publish templates to GitHub, show a helpful message
+                        return Err(ShipwrightError::IoError(
+                            "Shipwright template not found. Please run 'shipwright new' from within the shipwright project directory, or specify a git URL.".to_string()
+                        ));
+                    }
                 },
                 _ => {
-                    // Assume it's a local path
+                    // Try local path first
                     let path = std::path::Path::new(&self.template);
                     if path.exists() {
-                        path.to_path_buf()
+                        // Use local template
+                        let mut cmd = Command::new("cargo");
+                        cmd.arg("generate");
+                        cmd.arg("--path").arg(&path);
+                        cmd.arg("--name").arg(&self.name);
+                        return self.run_cargo_generate_command(cmd).await;
                     } else {
-                        // Try checking in templates directory
-                        let templates_path = self.find_shipwright_root()?
-                            .join("templates")
-                            .join(&self.template);
-                        
-                        if templates_path.exists() {
-                            templates_path
+                        // Try to find local Shipwright development templates as fallback
+                        if let Ok(templates_path) = self.try_find_local_template(&self.template) {
+                            let mut cmd = Command::new("cargo");
+                            cmd.arg("generate");
+                            cmd.arg("--path").arg(&templates_path);
+                            cmd.arg("--name").arg(&self.name);
+                            return self.run_cargo_generate_command(cmd).await;
                         } else {
                             return Err(ShipwrightError::IoError(
-                                format!("Template not found: {}. Available templates: default, shipwright", self.template)
+                                format!("Template not found: {}. Available templates: default, shipwright, or specify a git URL", self.template)
                             ));
                         }
                     }
                 }
             }
-        };
-        
-        // For local templates, use the path directly
-        cmd.arg("--path").arg(&template_path);
-        cmd.arg("--name").arg(&self.name);
-        
-        // Set destination directory if specified
-        if let Some(ref dest) = self.directory {
-            cmd.arg("--destination").arg(dest);
         }
         
-        // Add force flag if specified
-        if self.force {
-            cmd.arg("--force");
-        }
-        
-        // Use silent mode if defaults requested
-        if self.defaults {
-            cmd.arg("--silent");
-            cmd.arg("--allow-commands");
-        }
-        
-        // Add custom variables
-        for (key, value) in &self.variables {
-            cmd.arg("--define").arg(format!("{}={}", key, value));
-        }
-        
-        // Add VCS option if no-git specified
-        if self.no_git {
-            cmd.arg("--vcs").arg("none");
-        }
-        
-        // Execute cargo-generate
-        info!("Running cargo-generate with template: {}", template_path.display());
-        let output = cmd.output()
-            .map_err(|e| ShipwrightError::IoError(
-                format!("Failed to run cargo-generate: {}", e)
-            ))?;
-        
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ShipwrightError::BuildError(
-                format!("cargo-generate failed: {}", stderr)
-            ));
-        }
-        
-        // Print success message
-        let default_dir = PathBuf::from(&self.name);
-        let project_dir = self.directory.as_ref().unwrap_or(&default_dir);
-        println!("\n✅ Successfully created new Shipwright project: {}", self.name);
-        println!("\n📝 Next steps:");
-        println!("   cd {}", project_dir.display());
-        println!("   shipwright dev");
-        
-        // Additional tips based on template
-        if self.template.contains("full-stack") {
-            println!("\n💡 Don't forget to:");
-            println!("   - Install frontend dependencies: cd {}-frontend && npm install", self.name);
-            println!("   - Set up your database if needed");
-        }
-        
-        Ok(())
+        // This code should not be reached due to early returns above
+        unreachable!()
     }
     
     async fn run_cargo_generate_with_git(&self, git_url: &str) -> Result<(), ShipwrightError> {
@@ -190,11 +155,9 @@ impl NewCommand {
             cmd.arg("--force");
         }
         
-        // Use silent mode if defaults requested
-        if self.defaults {
-            cmd.arg("--silent");
-            cmd.arg("--allow-commands");
-        }
+        // Use silent mode to avoid terminal issues in CLI environments
+        cmd.arg("--silent");
+        cmd.arg("--allow-commands");
         
         // Add custom variables
         for (key, value) in &self.variables {
@@ -229,6 +192,79 @@ impl NewCommand {
         println!("   shipwright dev");
         
         Ok(())
+    }
+    
+    async fn run_cargo_generate_with_git_subfolder(&self, git_url: &str, subfolder: &str) -> Result<(), ShipwrightError> {
+        info!("Creating new Shipwright project: {}", self.name);
+        
+        // Build cargo-generate command for git templates with subfolder
+        let mut cmd = Command::new("cargo");
+        cmd.arg("generate");
+        cmd.arg("--git").arg(git_url);
+        cmd.arg("--subfolder").arg(subfolder);
+        cmd.arg("--name").arg(&self.name);
+        
+        self.run_cargo_generate_command(cmd).await
+    }
+    
+    async fn run_cargo_generate_command(&self, mut cmd: Command) -> Result<(), ShipwrightError> {
+        // Set destination directory if specified
+        if let Some(ref dest) = self.directory {
+            cmd.arg("--destination").arg(dest);
+        }
+        
+        // Add force flag if specified
+        if self.force {
+            cmd.arg("--force");
+        }
+        
+        // Use silent mode to avoid terminal issues in CLI environments
+        cmd.arg("--silent");
+        cmd.arg("--allow-commands");
+        
+        // Add custom variables
+        for (key, value) in &self.variables {
+            cmd.arg("--define").arg(format!("{}={}", key, value));
+        }
+        
+        // Add VCS option if no-git specified
+        if self.no_git {
+            cmd.arg("--vcs").arg("none");
+        }
+        
+        // Execute cargo-generate
+        let output = cmd.output()
+            .map_err(|e| ShipwrightError::IoError(
+                format!("Failed to run cargo-generate: {}", e)
+            ))?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ShipwrightError::BuildError(
+                format!("cargo-generate failed: {}", stderr)
+            ));
+        }
+        
+        // Print success message
+        let default_dir = PathBuf::from(&self.name);
+        let project_dir = self.directory.as_ref().unwrap_or(&default_dir);
+        println!("\n✅ Successfully created new Shipwright project: {}", self.name);
+        println!("\n📝 Next steps:");
+        println!("   cd {}", project_dir.display());
+        println!("   shipwright dev");
+        
+        Ok(())
+    }
+    
+    fn try_find_local_template(&self, template_name: &str) -> Result<PathBuf, ShipwrightError> {
+        // Only try to find local templates if we're in development mode
+        if let Ok(shipwright_root) = self.find_shipwright_root() {
+            let templates_path = shipwright_root.join("templates").join(template_name);
+            if templates_path.exists() {
+                return Ok(templates_path);
+            }
+        }
+        Err(ShipwrightError::IoError("Local template not found".to_string()))
     }
     
     /// Find the Shipwright project root by looking for templates directory
