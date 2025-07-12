@@ -138,7 +138,7 @@ impl LiveView for Counter {
 
     fn render(&self) -> Html<Self::Message> {
         html! {
-            <div style="background-color: green; padding: 20px; font-family: Arial, sans-serif;">
+            <div style="border: 1px dashed green; padding: 20px; font-family: Arial, sans-serif;">
                 <h1>"🚀 Shipwright LiveView Counter"</h1>
                 <div style="margin: 20px 0;">
                     <button
@@ -153,8 +153,8 @@ impl LiveView for Counter {
                         style="padding: 10px 20px; margin: 5px; background: #51cf66; color: white; border: none; border-radius: 5px; cursor: pointer;"
                     >"+"</button>
                 </div>
-                <p style="color: #666;">
-                    "🔥 Try editing this fart the server is running!!!!"
+                <p class="[ stack ]">
+                    "🔥 Try editing this shart the server is running!!!!"
                 </p>
             </div>
         }

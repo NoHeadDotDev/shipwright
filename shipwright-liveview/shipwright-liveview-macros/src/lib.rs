@@ -43,6 +43,14 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
+mod attributes;
+mod elements;
+mod errors;
+mod html5_validation;
+mod namespaces;
+mod tokenizer;
+
+use crate::errors::{HtmlError, HtmlErrorExt};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::fmt::Write;
@@ -162,7 +170,7 @@ struct TagClose {
 impl Parse for TagNode {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         input.parse::<Token![<]>()?;
-        let open = input.parse()?;
+        let open: Ident = input.parse()?;
 
         let mut attrs = Vec::new();
         loop {
@@ -170,7 +178,7 @@ impl Parse for TagNode {
                 break;
             }
 
-            match input.fork().parse::<AttrIdent>() {
+            match input.fork().parse::<Attr>() {
                 Ok(_) => attrs.push(input.parse()?),
                 Err(err) => {
                     return Err(err);
@@ -188,6 +196,7 @@ impl Parse for TagNode {
         }
 
         input.parse::<Token![>]>()?;
+
 
         let next_is_close = || input.peek(Token![<]) && input.peek2(Token![/]);
         let mut inner = Vec::new();
